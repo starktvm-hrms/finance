@@ -85,6 +85,29 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
+        <h3>Letterhead & bank details</h3>
+        <p className="muted">Printed on estimates. Blank fields are left off.</p>
+        <div className="form">
+          <Field label="Phone"><input value={s.agencyPhone} onChange={(e) => updateSettings({ agencyPhone: e.target.value })} placeholder="+91-471-…" /></Field>
+          <Field label="Fax"><input value={s.agencyFax} onChange={(e) => updateSettings({ agencyFax: e.target.value })} /></Field>
+          <Field label="Website"><input value={s.agencyWebsite} onChange={(e) => updateSettings({ agencyWebsite: e.target.value })} placeholder="www.example.in" /></Field>
+          <Field label="PAN"><input value={s.agencyPan} maxLength={10} onChange={(e) => updateSettings({ agencyPan: e.target.value.toUpperCase() })} /></Field>
+          <Field label="CIN"><input value={s.agencyCin} onChange={(e) => updateSettings({ agencyCin: e.target.value.toUpperCase() })} /></Field>
+          <Field label="GST state code"><input value={s.stateCode} maxLength={2} onChange={(e) => updateSettings({ stateCode: e.target.value.replace(/\D/g, "") })} placeholder={s.taxId ? `${s.taxId.slice(0, 2)} (from GSTIN)` : "e.g. 32"} /></Field>
+          <Field label="Account name"><input value={s.bankAccountName} onChange={(e) => updateSettings({ bankAccountName: e.target.value })} /></Field>
+          <Field label="Bank"><input value={s.bankName} onChange={(e) => updateSettings({ bankName: e.target.value })} /></Field>
+          <Field label="Branch"><input value={s.bankBranch} onChange={(e) => updateSettings({ bankBranch: e.target.value })} /></Field>
+          <Field label="Account no."><input value={s.bankAccountNo} onChange={(e) => updateSettings({ bankAccountNo: e.target.value })} /></Field>
+          <Field label="IFSC"><input value={s.bankIfsc} onChange={(e) => updateSettings({ bankIfsc: e.target.value.toUpperCase() })} /></Field>
+          <Field label="SWIFT code"><input value={s.bankSwift} onChange={(e) => updateSettings({ bankSwift: e.target.value.toUpperCase() })} /></Field>
+          <Field label="Estimate terms (one per line; {days} = validity, {agency} = agency name)" span={2}>
+            <textarea rows={3} value={s.estimateTerms} onChange={(e) => updateSettings({ estimateTerms: e.target.value })} />
+          </Field>
+          <Field label="Signature labels (comma-separated)" span={2}><input value={s.signatureLabels} onChange={(e) => updateSettings({ signatureLabels: e.target.value })} /></Field>
+        </div>
+      </div>
+
+      <div className="card">
         <h3>Invoices & estimates</h3>
         <div className="form">
           <Field label="Currency">
@@ -100,8 +123,9 @@ export default function SettingsPage() {
           <Field label="Next invoice number"><input type="number" min={1} value={s.nextInvoiceNumber} onChange={(e) => updateSettings({ nextInvoiceNumber: Number(e.target.value) })} /></Field>
           <Field label="Payment terms (days)"><input type="number" min={0} value={s.paymentTermsDays} onChange={(e) => updateSettings({ paymentTermsDays: Number(e.target.value) })} /></Field>
           <div />
-          <Field label="Estimate prefix"><input value={s.estimatePrefix} onChange={(e) => updateSettings({ estimatePrefix: e.target.value })} /></Field>
-          <Field label="Next estimate number"><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
+          <Field label="Production estimate prefix"><input value={s.productionEstimatePrefix} onChange={(e) => updateSettings({ productionEstimatePrefix: e.target.value })} /></Field>
+          <Field label="Media estimate prefix"><input value={s.mediaEstimatePrefix} onChange={(e) => updateSettings({ mediaEstimatePrefix: e.target.value })} /></Field>
+          <Field label={`Next estimate number (e.g. ${s.productionEstimatePrefix}/26-27/${s.nextEstimateNumber})`}><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
           <Field label="Estimates valid for (days)"><input type="number" min={1} value={s.estimateValidDays} onChange={(e) => updateSettings({ estimateValidDays: Number(e.target.value) })} /></Field>
           <Field label="Job prefix"><input value={s.jobPrefix} onChange={(e) => updateSettings({ jobPrefix: e.target.value })} /></Field>
           <Field label="Next job number"><input type="number" min={1} value={s.nextJobNumber} onChange={(e) => updateSettings({ nextJobNumber: Number(e.target.value) })} /></Field>

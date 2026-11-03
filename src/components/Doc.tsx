@@ -25,7 +25,14 @@ export function ItemsEditor({ items, onChange, settings }: { items: LineItem[]; 
       <div className="items-head"><span>Description</span><span>Qty</span><span>Rate</span><span className="num">Amount</span><span /></div>
       {items.map((it) => (
         <div className="items-row" key={it.id}>
-          <input required placeholder="Service or deliverable" value={it.description} onChange={(e) => set(it.id, { description: e.target.value })} aria-label="Description" />
+          <textarea
+            required
+            rows={Math.min(8, Math.max(1, it.description.split("\n").length))}
+            placeholder={"Service or deliverable\n• details on new lines starting with •"}
+            value={it.description}
+            onChange={(e) => set(it.id, { description: e.target.value })}
+            aria-label="Description"
+          />
           <input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => set(it.id, { quantity: Number(e.target.value) })} aria-label="Quantity" />
           <input type="number" min={0} step="0.01" value={it.rate || ""} onChange={(e) => set(it.id, { rate: Number(e.target.value) })} aria-label="Rate" />
           <span className="num">{money(it.quantity * it.rate, settings)}</span>

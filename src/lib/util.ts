@@ -106,3 +106,69 @@ export function toCSV(rows: Record<string, unknown>[]) {
   };
   return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
 }
+
+/** Indian financial year (April–March) of a date, as "26-27". */
+export function financialYear(date: string) {
+  const [y, m] = date.split("-").map(Number);
+  const start = m >= 4 ? y : y - 1;
+  return `${String(start % 100).padStart(2, "0")}-${String((start + 1) % 100).padStart(2, "0")}`;
+}
+
+/** GST state code: explicit, else the first two digits of a GSTIN. */
+export const gstState = (gstin?: string, explicit?: string) => (explicit?.trim() || gstin?.trim().slice(0, 2) || "").padStart(2, "0");
+
+/**
+ * How GST is printed. Same state → split into SGST + CGST; different state →
+ * IGST; unknown client state is treated as same-state (local client).
+ */
+export function gstSplit(agencyState: string, clientGstin: string | undefined, taxRate: number) {
+  const client = clientGstin?.trim().slice(0, 2);
+  if (!taxRate) return "none" as const;
+  return client && agencyState && client !== agencyState ? ("igst" as const) : ("cgst" as const);
+}
+
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+const under100 = (n: number) => (n < 20 ? ONES[n] : `${TENS[Math.floor(n / 10)]}${n % 10 ? " " + ONES[n % 10] : ""}`);
+const under1000 = (n: number) =>
+  [n >= 100 ? `${ONES[Math.floor(n / 100)]} Hundred` : "", under100(n % 100)].filter(Boolean).join(" ");
+
+/** 23600 → "Twenty Three Thousand Six Hundred" (Indian grouping: lakh, crore). */
+export function wordsIndian(n: number): string {
+  n = Math.floor(n);
+  if (n === 0) return "Zero";
+  const parts: string[] = [];
+  const crore = Math.floor(n / 1e7);
+  if (crore) parts.push(`${wordsIndian(crore)} Crore`);
+  n %= 1e7;
+  const lakh = Math.floor(n / 1e5);
+  if (lakh) parts.push(`${under100(lakh)} Lakh`);
+  n %= 1e5;
+  const thousand = Math.floor(n / 1000);
+  if (thousand) parts.push(`${under100(thousand)} Thousand`);
+  n %= 1000;
+  if (n) parts.push(under1000(n));
+  return parts.join(" ");
+}
+
+/** 1234567 → "One Million Two Hundred Thirty Four Thousand Five Hundred Sixty Seven". */
+export function wordsInternational(n: number): string {
+  n = Math.floor(n);
+  if (n === 0) return "Zero";
+  const scales = ["", "Thousand", "Million", "Billion"];
+  const parts: string[] = [];
+  for (let i = 0; n > 0; i++, n = Math.floor(n / 1000)) {
+    const chunk = n % 1000;
+    if (chunk) parts.unshift(`${under1000(chunk)}${scales[i] ? " " + scales[i] : ""}`);
+  }
+  return parts.join(" ");
+}
+
+/** "Twenty Three Thousand Six Hundred INR Only" (with paise / cents when present). */
+export function amountInWords(amount: number, currency: string) {
+  const whole = Math.floor(Math.abs(amount) + 1e-9);
+  const cents = Math.round((Math.abs(amount) - whole) * 100);
+  const words = currency === "INR" ? wordsIndian : wordsInternational;
+  const sub = cents ? ` and ${under100(cents)} ${currency === "INR" ? "Paise" : "Cents"}` : "";
+  return `${amount < 0 ? "Minus " : ""}${words(whole)} ${currency}${sub} Only`;
+}
