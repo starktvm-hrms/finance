@@ -5,6 +5,8 @@ import { needsEstimate, projectFinancials } from "../lib/metrics";
 import { makeJobNumber } from "../lib/jobno";
 import { jobCategory } from "../lib/doctype";
 import { go } from "../lib/route";
+import { listFilter } from "../lib/scope";
+import { ScopeChip } from "../components/ScopeChip";
 import { ESTIMATE_STATUS } from "./Estimates";
 import { fmtDate, money, today, uid } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
@@ -20,7 +22,8 @@ export const PROJECT_STATUS: Record<ProjectStatus, { label: string; tone: string
 type JobFilter = ProjectStatus | "all" | "needs_estimate";
 
 export default function Projects({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings, can, access } = useStore();
+  const { data, upsert, remove, updateSettings, can, access, user } = useStore();
+  const lf = listFilter(data, params, user, access.employeeId); // from a dashboard tile: your / one department's jobs
   const seeMoney = can("invoices") && can("expenses"); // invoiced / costs / profit need both
   const s = data.settings;
   const [edit, setEdit] = useState<Project | null>(null);
@@ -33,7 +36,8 @@ export default function Projects({ params }: { params: URLSearchParams }) {
   const typeTab = TYPE_TABS.some((t) => t.id === params.get("type")) ? (params.get("type") as string) : "all";
   const tab = TYPE_TABS.find((t) => t.id === typeTab)!;
   const catOf = (p: Project) => jobCategory(p, data.estimates);
-  const switchTab = (type: string) => go("projects", { ...(type !== "all" && { type }), ...(status !== "all" && { status }) });
+  const keep = Object.fromEntries(["by", "dept"].filter((k) => params.has(k)).map((k) => [k, params.get(k)!]));
+  const switchTab = (type: string) => go("projects", { ...(type !== "all" && { type }), ...(status !== "all" && { status }), ...keep });
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const row = tabsRef.current;
@@ -84,7 +88,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
     p.approval && upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today() } });
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const statusMatch = (p: Project, f: JobFilter) => f === "all" || p.status === f || (f === "needs_estimate" && needsEstimate(data, p.id));
-  const inTab = (p: Project) => typeTab === "all" || catOf(p) === typeTab;
+  const inTab = (p: Project) => (typeTab === "all" || catOf(p) === typeTab) && (!lf || lf.keepJob(p));
   const rows = data.projects.filter((p) => inTab(p) && statusMatch(p, status));
   const statusCount = (f: JobFilter) => data.projects.filter((p) => inTab(p) && statusMatch(p, f)).length;
 
@@ -114,6 +118,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
           </button>
         ))}
       </div>
+      {lf && <ScopeChip label={lf.label} page="projects" params={params} />}
       <PageHeader
         level={2}
         title={typeTab === "all" ? "All jobs" : `${tab.label} jobs`}
@@ -279,6 +284,12 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
               <button type="button" className="btn ghost" onClick={() => { setNumberTyped(false); setJob({ ...job, number: "" }); }} title="Use the generated number">Auto</button>
             )}
           </span>
+        </Field>
+        <Field label="Department" span={2}>
+          <select value={job.departmentId ?? ""} onChange={(e) => setJob({ ...job, departmentId: e.target.value || undefined })}>
+            <option value="">{isNew ? "Yours (from your employee record)" : "Not set"}</option>
+            {data.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
         </Field>
         <Field label="Category" span={2}>
           <select value={job.category ?? ""} onChange={(e) => setJob({ ...job, category: (e.target.value || undefined) as EstimateType | undefined })}>

@@ -41,6 +41,7 @@ export interface Me {
   role?: string;
   roleName?: string;
   areas?: string[];
+  scope?: "all" | "department" | "own";
   employeeId?: string;
 }
 
@@ -48,6 +49,7 @@ export interface Role {
   id: string;
   name: string;
   areas: string[];
+  scope?: "all" | "department" | "own";
 }
 export interface Login {
   username: string;

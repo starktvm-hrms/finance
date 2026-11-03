@@ -13,12 +13,22 @@ export const AREAS = [
 ] as const;
 export type AreaId = (typeof AREAS)[number]["id"];
 
+/** What a role's dashboard counts: the whole agency, the user's department, or their own work. */
+export type Scope = "all" | "department" | "own";
+export const SCOPES: { id: Scope; label: string }[] = [
+  { id: "all", label: "Whole agency" },
+  { id: "department", label: "Their department" },
+  { id: "own", label: "Their own work" },
+];
+
 export interface Access {
   admin: boolean;
   areas: string[];
   roleName: string;
+  scope: Scope;
+  employeeId: string; // employee linked to the login ("" = not linked)
 }
-export const FULL_ACCESS: Access = { admin: true, areas: AREAS.map((a) => a.id), roleName: "Admin" };
+export const FULL_ACCESS: Access = { admin: true, areas: AREAS.map((a) => a.id), roleName: "Admin", scope: "all", employeeId: "" };
 
 /** Which area a page belongs to (Clients is part of Clients & Vendors). */
 export function areaOfPage(page: PageId): AreaId {

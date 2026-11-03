@@ -109,6 +109,12 @@ export default function Expenses({ params }: { params: URLSearchParams }) {
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
+            <Field label="Department" span={2}>
+              <select value={edit.departmentId ?? ""} onChange={(e) => setEdit({ ...edit, departmentId: e.target.value || undefined })}>
+                <option value="">{edit.projectId ? "The job's department" : "— None —"}</option>
+                {data.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
             <Field label="Description" span={2}><textarea rows={2} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
             <label className="check span2"><input type="checkbox" checked={edit.recurring} onChange={(e) => setEdit({ ...edit, recurring: e.target.checked })} /> Recurring monthly cost</label>
             <div className="form-actions span2">

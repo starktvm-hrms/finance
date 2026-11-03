@@ -13,7 +13,7 @@ imported from the old nginx login are accepted and upgraded on first sign-in).
 A session is a random token in an HttpOnly, SameSite=Strict cookie; only its
 SHA-256 is stored (sessions.json), so restarts don't sign anyone out.
 
-    GET  /me                 -> {"user": name}   (401 when signed out)
+    GET  /me                 -> {"user", "role", "areas", "scope", "employeeId"}   (401 when signed out)
     GET  /branding           -> {"agencyName", "logo"}  (public, for the login page)
     POST /login  {username, password, remember} -> {"user": name} + cookie
     POST /logout             -> {}
@@ -96,11 +96,19 @@ AREA_COLS = {
 PRIVATE_COLS = {"estimates": "estimates", "invoices": "invoices", "expenses": "expenses"}
 # Settings a non-admin may move on, for the numbering of their own documents.
 COUNTER_KEYS = {"nextJobNumber": "jobs", "nextEstimateNumber": "estimates", "nextInvoiceNumber": "invoices"}
+# What a role's dashboard counts: everything, the user's department, or their own work.
+SCOPES = ("all", "department", "own")
 DEFAULT_ROLES = [
-    {"id": "department_head", "name": "Department head", "areas": ["dashboard", "jobs", "estimates", "directory", "people"]},
-    {"id": "account_executive", "name": "Account executive", "areas": ["dashboard", "jobs", "estimates", "directory"]},
-    {"id": "finance_executive", "name": "Finance executive", "areas": ["dashboard", "estimates", "invoices", "expenses", "directory"]},
+    {"id": "department_head", "name": "Department head", "areas": ["dashboard", "jobs", "estimates", "directory", "people"], "scope": "department"},
+    {"id": "account_executive", "name": "Account executive", "areas": ["dashboard", "jobs", "estimates", "directory"], "scope": "own"},
+    {"id": "finance_executive", "name": "Finance executive", "areas": ["dashboard", "estimates", "invoices", "expenses", "directory"], "scope": "all"},
 ]
+DEFAULT_SCOPE = {r["id"]: r["scope"] for r in DEFAULT_ROLES}
+
+
+def role_scope(r: dict) -> str:
+    sc = r.get("scope")
+    return sc if sc in SCOPES else DEFAULT_SCOPE.get(r.get("id"), "all")
 
 
 def check_op(o: dict, admin: bool, areas: set):
@@ -127,11 +135,35 @@ def check_op(o: dict, admin: bool, areas: set):
         raise Forbidden("Only an admin can delete clients, vendors or jobs.")
 
 
-def visible_data(data, admin: bool, areas: set):
-    """The dataset as this user may see it (private collections emptied)."""
-    if admin or data is None:
+def dept_of(data: dict, x: dict) -> str:
+    """Department of a record: its own, else its job's, else its creator's. Mirrors departmentOf() in src/lib/scope.ts."""
+    if x.get("departmentId"):
+        return x["departmentId"]
+    pid = x.get("projectId")
+    if pid:
+        p = next((j for j in data.get("projects", []) if j.get("id") == pid), None)
+        if p:
+            return dept_of(data, {**p, "projectId": ""})
+    emp = next((e for e in data.get("employees", []) if e.get("id") == x.get("createdById")), None)
+    return (emp or {}).get("departmentId", "") or ""
+
+
+def visible_data(data, acc: dict):
+    """The dataset as this user may see it (private collections emptied).
+
+    A role whose dashboard counts its department gets that department's
+    invoices and expenses even without those tabs, for its revenue and
+    expenditure figures."""
+    if acc["admin"] or data is None:
         return data
-    return {**data, **{col: [] for col, area in PRIVATE_COLS.items() if area not in areas}}
+    areas = set(acc["areas"])
+    dept = acc.get("departmentId", "") if acc.get("scope") == "department" else ""
+    out = {}
+    for col, area in PRIVATE_COLS.items():
+        if area in areas:
+            continue
+        out[col] = [x for x in data.get(col, []) if dept_of(data, x) == dept] if dept else []
+    return {**data, **out}
 
 
 def load():
@@ -283,7 +315,8 @@ def save_users(u: dict):
 
 def roles() -> list:
     r = _read_json(USERS_FILE, {}).get("roles")
-    return r if isinstance(r, list) and r else DEFAULT_ROLES
+    r = r if isinstance(r, list) and r else DEFAULT_ROLES
+    return [{**x, "scope": role_scope(x)} for x in r]
 
 
 def save_roles(r: list):
@@ -294,14 +327,14 @@ def save_roles(r: list):
 def access_of(user: str | None) -> dict:
     """Role and areas of a user. Users without a role (e.g. imported) are admins."""
     if user == "":  # legacy mode: nginx login in front
-        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS}
+        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS, "scope": "all"}
     info = users().get(user or "", {})
     role = info.get("role") or "admin"
     if role == "admin":
-        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS}
+        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS, "scope": "all"}
     r = next((x for x in roles() if x.get("id") == role), None)
     areas = [a for a in (r or {}).get("areas", []) if a in AREAS]
-    return {"admin": False, "role": role, "roleName": (r or {}).get("name", role), "areas": areas}
+    return {"admin": False, "role": role, "roleName": (r or {}).get("name", role), "areas": areas, "scope": role_scope(r or {"id": role})}
 
 
 def auth_mode() -> str:
@@ -438,7 +471,10 @@ class Handler(BaseHTTPRequestHandler):
             since = dict(p.split("=", 1) for p in query.split("&") if "=" in p).get("since")
             if since and since.isdigit() and int(since) == rev:
                 return self.send(200, {"unchanged": True, "rev": rev})
-            return self.send(200, {"rev": rev, "data": visible_data(data, acc["admin"], set(acc["areas"]))})
+            emp_id = users().get(user or "", {}).get("employeeId", "")
+            emp = next((e for e in (data or {}).get("employees", []) if e.get("id") == emp_id), None) if emp_id else None
+            acc["departmentId"] = (emp or {}).get("departmentId", "")
+            return self.send(200, {"rev": rev, "data": visible_data(data, acc)})
         if path == "/admin/access":
             if not acc["admin"]:
                 return self.send(403, {"error": "Only an admin can manage logins."})
@@ -489,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
                         name = str(r.get("name", "")).strip()
                         if not rid or not name or rid == "admin":
                             raise BadRequest("Every role needs a name (and 'admin' is reserved).")
-                        clean.append({"id": rid, "name": name, "areas": [a for a in r.get("areas", []) if a in AREAS]})
+                        clean.append({"id": rid, "name": name, "areas": [a for a in r.get("areas", []) if a in AREAS], "scope": role_scope(r)})
                     in_use = {v.get("role") for v in u.values()} - {None, "admin"}
                     missing = in_use - {r["id"] for r in clean}
                     if missing:

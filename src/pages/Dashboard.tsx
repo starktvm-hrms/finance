@@ -3,8 +3,12 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, ComposedChart, ResponsiveCo
 import { useStore } from "../lib/store";
 import { computeMetrics, workflowQueues } from "../lib/metrics";
 import { go, type PageId } from "../lib/route";
-import { fmtDate, invoiceTotals, money, monthLabel, shortMoney } from "../lib/util";
-import { Empty, PageHeader, Stat } from "../components/ui";
+import { jobsByPerson, scopeInfo, scopeParams, scopedData } from "../lib/scope";
+import { fmtDate, invoiceTotals, money, monthLabel, shortMoney, today } from "../lib/util";
+import { Badge, Empty, PageHeader, Stat } from "../components/ui";
+import { PROJECT_STATUS } from "./Projects";
+import { ESTIMATE_STATUS } from "./Estimates";
+import type { ProjectStatus } from "../types";
 
 const RANGES = [
   { v: 1, label: "This month" },
@@ -14,33 +18,52 @@ const RANGES = [
 ];
 
 export default function Dashboard() {
-  const { data, can } = useStore();
-  const s = data.settings;
+  const { data: all, can, access, user } = useStore();
+  const s = all.settings;
   const [months, setMonths] = useState(6);
+  // Department heads see their department, account executives their own work, others everything.
+  const info = scopeInfo(all, access, user);
+  const data = scopedData(all, info, user, access.employeeId);
+  const sp = scopeParams(info);
   const m = computeMetrics(data, months);
   const fm = (n: number) => money(n, s);
   const margin = m.revenue ? Math.round((m.profit / m.revenue) * 100) : 0;
   const chart = m.monthly.map((x) => ({ ...x, label: monthLabel(x.month, s.locale) }));
   const maxCat = m.byCategory[0]?.value || 1;
-  const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
+  const clientName = (id: string) => all.clients.find((c) => c.id === id)?.name ?? "—";
   const w = workflowQueues(data);
+  const thisMonth = today().slice(0, 7);
+  const newThisMonth = data.projects.filter((p) => (p.startDate || p.createdAt).slice(0, 7) === thisMonth).length;
   const allTiles: { title: string; sub: string; count: number; hint: string; page: PageId; params: Record<string, string>; needs: string[] }[] = [
-    { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" }, needs: ["jobs", "estimates"] },
+    { title: "Jobs", sub: "Created", count: data.projects.length, hint: `${newThisMonth} this month`, page: "projects", params: {}, needs: [] },
+    { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" }, needs: [] },
+    { title: "Estimates", sub: "Raised", count: data.estimates.length, hint: `${data.estimates.filter((e) => e.status === "draft").length} still in draft`, page: "estimates", params: {}, needs: ["estimates"] },
     { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} in production and other estimates awaiting the client's decision`, page: "estimates", params: { status: "sent", kind: "production" }, needs: ["estimates"] },
     { title: "Media Estimates", sub: "For approval", count: w.mediaForApproval.length, hint: `${fm(w.mediaApprovalValue)} in media estimates awaiting the client's decision`, page: "estimates", params: { type: "media", status: "sent" }, needs: ["estimates"] },
-    { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" }, needs: ["estimates", "invoices"] },
+    { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" }, needs: ["estimates"] },
     { title: "Invoice", sub: "To collect", count: w.invoiceToCollect.length, hint: `${fm(w.toCollectValue)} sent, not yet paid`, page: "invoices", params: { status: "unpaid" }, needs: ["invoices"] },
   ];
   const tiles = allTiles.filter((t) => t.needs.every(can));
-  const seeMoney = can("invoices") && can("expenses");
+  const openTile = (t: (typeof tiles)[number]) => {
+    if (!can(t.page === "projects" ? "jobs" : t.page)) return;
+    go(t.page, { ...t.params, ...(t.page !== "invoices" && sp) });
+  };
+  // A department head gets their department's money even without the Invoices / Expenses tabs (the server sends just those).
+  const seeMoney = (can("invoices") && can("expenses")) || info.scope === "department";
+  const statuses = (Object.keys(PROJECT_STATUS) as ProjectStatus[]).map((k) => ({ k, n: data.projects.filter((p) => p.status === k).length }));
+  const maxStatus = Math.max(1, ...statuses.map((x) => x.n));
+  const people = jobsByPerson(all, data.projects);
+  const latestEstimate = (jobId: string) => data.estimates.filter((e) => e.projectId === jobId).sort((a, b) => b.issueDate.localeCompare(a.issueDate))[0];
+  const recent = [...data.projects].sort((a, b) => (b.startDate || b.createdAt).localeCompare(a.startDate || a.createdAt)).slice(0, 8);
 
   return (
     <div className="page">
-      <PageHeader title="Dashboard" />
+      <PageHeader title="Dashboard" subtitle={access.admin ? undefined : `${access.roleName} · ${info.label}`} />
+      {info.problem && <div className="alert">{info.problem}</div>}
 
       {tiles.length > 0 && <div className="queues" role="list" aria-label="Work queues">
         {tiles.map((t) => (
-          <button key={t.title + t.sub} role="listitem" className="card queue" onClick={() => go(t.page, t.params)} title={t.hint}>
+          <button key={t.title + t.sub} role="listitem" className="card queue" onClick={() => openTile(t)} title={t.hint}>
             <span className="queue-title">{t.title}</span>
             <span className="queue-sub">{t.sub}</span>
             <span className="queue-count">{t.count.toLocaleString(s.locale)}</span>
@@ -48,11 +71,68 @@ export default function Dashboard() {
         ))}
       </div>}
 
+      <div className="grid-2 dash-jobs">
+        <div className="card">
+          <h3>Job status</h3>
+          {data.projects.length === 0 ? <Empty>No jobs yet.</Empty> : (
+            <div className="bars">
+              {statuses.map(({ k, n }) => (
+                <button key={k} className="bar-row plain" onClick={() => can("jobs") && go("projects", { status: k, ...sp })} disabled={!can("jobs")}>
+                  <div className="bar-label"><span>{PROJECT_STATUS[k].label}</span><span className="num">{n}</span></div>
+                  <div className="bar-track"><div className={`bar-fill tone-${PROJECT_STATUS[k].tone}`} style={{ width: `${(n / maxStatus) * 100}%` }} /></div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {info.scope === "own" ? (
+          <div className="card">
+            <h3>My recent jobs</h3>
+            {recent.length === 0 ? <Empty>Jobs you create show up here.</Empty> : (
+              <div className="scroll-x"><table className="table compact">
+                <thead><tr><th>Job</th><th>Status</th><th>Estimate</th></tr></thead>
+                <tbody>
+                  {recent.map((p) => {
+                    const est = latestEstimate(p.id);
+                    return (
+                      <tr key={p.id}>
+                        <td><strong>{p.name}</strong><div className="muted small">{[p.number, clientName(p.clientId)].filter(Boolean).join(" · ")}</div></td>
+                        <td><Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge></td>
+                        <td className="small">{est ? <>{est.number}<div className="muted">{ESTIMATE_STATUS[est.status].label}</div></> : <span className="warn">Not raised</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table></div>
+            )}
+          </div>
+        ) : (
+          <div className="card">
+            <h3>Jobs created by</h3>
+            {people.length === 0 ? <Empty>No jobs yet.</Empty> : (
+              <div className="scroll-x"><table className="table compact">
+                <thead><tr><th>Person</th><th className="num">Jobs</th><th className="num">Open</th></tr></thead>
+                <tbody>
+                  {people.map((r) => (
+                    <tr key={r.key}>
+                      <td>{r.name}{r.dept && info.scope === "all" && <div className="muted small">{r.dept}</div>}</td>
+                      <td className="num">{r.jobs}</td>
+                      <td className="num">{r.open}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+          </div>
+        )}
+      </div>
+
       {seeMoney && (
         <>
       <PageHeader
         title="Financials"
-        subtitle="Cash basis: revenue counts invoices when paid, excluding tax."
+        subtitle={`${info.scope === "department" ? `${info.label}. ` : ""}Cash basis: revenue counts invoices when paid, excluding tax.`}
         actions={
           <select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Period">
             {RANGES.map((r) => (
@@ -63,8 +143,8 @@ export default function Dashboard() {
       />
 
       <div className="stats">
-        <Stat label="Revenue" value={fm(m.revenue)} hint={`+ ${fm(m.taxCollected)} tax collected`} />
-        <Stat label="Expenses" value={fm(m.spent)} hint={`${m.byCategory.length} categories`} />
+        <Stat label="Total revenue" value={fm(m.revenue)} hint={`+ ${fm(m.taxCollected)} tax collected`} />
+        <Stat label="Total expenditure" value={fm(m.spent)} hint={`${m.byCategory.length} categories`} />
         <Stat label="Net profit" value={fm(m.profit)} hint={`${margin}% margin`} tone={m.profit >= 0 ? "good" : "bad"} />
         <Stat
           label="Outstanding"
@@ -139,7 +219,7 @@ export default function Dashboard() {
         <div className="card span-2">
           <div className="row between">
             <h3>Overdue invoices</h3>
-            <button className="btn ghost" onClick={() => go("invoices", { status: "overdue" })}>All overdue →</button>
+            {can("invoices") && <button className="btn ghost" onClick={() => go("invoices", { status: "overdue" })}>All overdue →</button>}
           </div>
           {m.overdueList.length === 0 ? (
             <Empty>No overdue invoices. 🎉</Empty>
