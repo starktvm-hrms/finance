@@ -17,7 +17,7 @@ const amt = (n: number, locale: string) => new Intl.NumberFormat(locale, { minim
  * Line description: the lines before the first bullet print bold (the heading),
  * lines starting with •, - or * print as bullets, anything else as plain text.
  */
-function Description({ text }: { text: string }) {
+export function Description({ text }: { text: string }) {
   const lines = text.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim());
   const isBullet = (l: string) => /^\s*[•\-*]\s+/.test(l);
   const firstBullet = lines.findIndex(isBullet);
@@ -121,10 +121,6 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
   const client = data.clients.find((c) => c.id === est.clientId);
   const job = data.projects.find((p) => p.id === est.projectId);
   const fmt = docFormat(est.country, s);
-  const t = invoiceTotals(est);
-  const state = gstState(s.taxId, s.stateCode);
-  const split = gstSplit(state, client?.taxId, est.taxRate);
-  const half = est.taxRate / 2;
   const product = est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" ") || est.title || "";
   return (
     <article className="pe-doc print-area" aria-label={`Estimate ${est.number}`}>
@@ -174,27 +170,7 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
         </tbody>
       </table>
 
-      <div className="pe-totals">
-        <div className="pe-words">Amount in Words: {amountInWords(t.total, fmt.currency)}</div>
-        <dl>
-          <dt>Total:</dt><dd>{amt(t.subtotal, fmt.locale)}</dd>
-          {t.discount > 0 && (
-            <>
-              <dt>Discount{est.discountPct ? ` (${est.discountPct}%)` : ""}:</dt><dd>-{amt(t.discount, fmt.locale)}</dd>
-              <dt>Taxable Value:</dt><dd>{amt(t.net, fmt.locale)}</dd>
-            </>
-          )}
-          {split === "cgst" && (
-            <>
-              <dt>SGST ({half}%):</dt><dd>{amt(t.tax / 2, fmt.locale)}</dd>
-              <dt>CGST ({half}%):</dt><dd>{amt(t.tax / 2, fmt.locale)}</dd>
-            </>
-          )}
-          {split === "igst" && (<><dt>IGST ({est.taxRate}%):</dt><dd>{amt(t.tax, fmt.locale)}</dd></>)}
-          <dt>Round Off:</dt><dd>{amt(t.roundOff, fmt.locale)}</dd>
-          <dt className="pe-grand">Grand Total:</dt><dd className="pe-grand">{amt(t.total, fmt.locale)}</dd>
-        </dl>
-      </div>
+      <EstimateTotals est={est} />
 
       {est.remarks && <RichTextView html={est.remarks} className="pe-rich" />}
 
@@ -202,5 +178,39 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
 
       <EstimateFooter />
     </article>
+  );
+}
+
+/** Totals with amount in words: Total, discount, SGST/CGST or IGST, round off, grand total. */
+export function EstimateTotals({ est }: { est: Estimate }) {
+  const { data } = useStore();
+  const s = data.settings;
+  const client = data.clients.find((c) => c.id === est.clientId);
+  const fmt = docFormat(est.country, s);
+  const t = invoiceTotals(est);
+  const split = gstSplit(gstState(s.taxId, s.stateCode), client?.taxId, est.taxRate);
+  const half = est.taxRate / 2;
+  return (
+    <div className="pe-totals">
+      <div className="pe-words">Amount in Words: {amountInWords(t.total, fmt.currency)}</div>
+      <dl>
+        <dt>Total:</dt><dd>{amt(t.subtotal, fmt.locale)}</dd>
+        {t.discount > 0 && (
+          <>
+            <dt>Discount{est.discountPct ? ` (${est.discountPct}%)` : ""}:</dt><dd>-{amt(t.discount, fmt.locale)}</dd>
+            <dt>Taxable Value:</dt><dd>{amt(t.net, fmt.locale)}</dd>
+          </>
+        )}
+        {split === "cgst" && (
+          <>
+            <dt>SGST ({half}%):</dt><dd>{amt(t.tax / 2, fmt.locale)}</dd>
+            <dt>CGST ({half}%):</dt><dd>{amt(t.tax / 2, fmt.locale)}</dd>
+          </>
+        )}
+        {split === "igst" && (<><dt>IGST ({est.taxRate}%):</dt><dd>{amt(t.tax, fmt.locale)}</dd></>)}
+        <dt>Round Off:</dt><dd>{amt(t.roundOff, fmt.locale)}</dd>
+        <dt className="pe-grand">Grand Total:</dt><dd className="pe-grand">{amt(t.total, fmt.locale)}</dd>
+      </dl>
+    </div>
   );
 }
