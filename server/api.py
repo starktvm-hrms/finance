@@ -66,13 +66,72 @@ MAX_FAILS, FAIL_WINDOW = 5, 15 * 60
 PBKDF2_ITERATIONS = 310_000
 
 lock = threading.Lock()
-auth_lock = threading.Lock()
+auth_lock = threading.RLock()  # re-entrant: admin actions end sessions while holding it
 state = {"rev": 0, "data": None}
 fails: dict[str, list[float]] = {}
 
 
 class BadRequest(Exception):
     pass
+
+
+class Forbidden(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- access (roles)
+# Areas are the app's tabs. An admin has every area plus user management.
+AREAS = ["dashboard", "jobs", "estimates", "invoices", "expenses", "directory", "people", "settings"]
+# Collections each area may change.
+AREA_COLS = {
+    "jobs": {"projects"},
+    "estimates": {"estimates"},
+    "invoices": {"invoices"},
+    "expenses": {"expenses"},
+    "directory": {"clients", "vendors"},
+    "people": {"employees", "departments", "branches"},
+}
+# Collections that are only sent to users with that area (everything else is
+# shared reference data the pages need, e.g. client and job names).
+PRIVATE_COLS = {"estimates": "estimates", "invoices": "invoices", "expenses": "expenses"}
+# Settings a non-admin may move on, for the numbering of their own documents.
+COUNTER_KEYS = {"nextJobNumber": "jobs", "nextEstimateNumber": "estimates", "nextInvoiceNumber": "invoices"}
+DEFAULT_ROLES = [
+    {"id": "department_head", "name": "Department head", "areas": ["dashboard", "jobs", "estimates", "directory", "people"]},
+    {"id": "account_executive", "name": "Account executive", "areas": ["dashboard", "jobs", "estimates", "directory"]},
+    {"id": "finance_executive", "name": "Finance executive", "areas": ["dashboard", "estimates", "invoices", "expenses", "directory"]},
+]
+
+
+def check_op(o: dict, admin: bool, areas: set):
+    """Raise Forbidden unless this user may make this change."""
+    if admin:
+        return
+    kind = o.get("op") if isinstance(o, dict) else None
+    if kind == "replace":
+        raise Forbidden("Only an admin can replace all the data.")
+    if kind == "settings":
+        if "settings" in areas:
+            return
+        for key in (o.get("patch") or {}):
+            if COUNTER_KEYS.get(key) not in areas:
+                raise Forbidden("You don't have access to change Settings.")
+        return
+    col = o.get("col")
+    area = next((a for a, cols in AREA_COLS.items() if col in cols), None)
+    if area not in areas:
+        raise Forbidden(f"You don't have access to change {col or 'this'}.")
+    # Clients, vendors and jobs are linked to estimates, invoices and expenses a
+    # limited user may not see, so only an admin can delete them.
+    if kind == "remove" and col in {"clients", "vendors", "projects"}:
+        raise Forbidden("Only an admin can delete clients, vendors or jobs.")
+
+
+def visible_data(data, admin: bool, areas: set):
+    """The dataset as this user may see it (private collections emptied)."""
+    if admin or data is None:
+        return data
+    return {**data, **{col: [] for col, area in PRIVATE_COLS.items() if area not in areas}}
 
 
 def load():
@@ -218,7 +277,31 @@ def users() -> dict:
 
 
 def save_users(u: dict):
-    _write_json(USERS_FILE, {"users": u})
+    doc = _read_json(USERS_FILE, {})
+    _write_json(USERS_FILE, {**doc, "users": u})
+
+
+def roles() -> list:
+    r = _read_json(USERS_FILE, {}).get("roles")
+    return r if isinstance(r, list) and r else DEFAULT_ROLES
+
+
+def save_roles(r: list):
+    doc = _read_json(USERS_FILE, {})
+    _write_json(USERS_FILE, {**doc, "roles": r})
+
+
+def access_of(user: str | None) -> dict:
+    """Role and areas of a user. Users without a role (e.g. imported) are admins."""
+    if user == "":  # legacy mode: nginx login in front
+        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS}
+    info = users().get(user or "", {})
+    role = info.get("role") or "admin"
+    if role == "admin":
+        return {"admin": True, "role": "admin", "roleName": "Admin", "areas": AREAS}
+    r = next((x for x in roles() if x.get("id") == role), None)
+    areas = [a for a in (r or {}).get("areas", []) if a in AREAS]
+    return {"admin": False, "role": role, "roleName": (r or {}).get("name", role), "areas": areas}
 
 
 def auth_mode() -> str:
@@ -345,14 +428,23 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/me":
             if user is None:
                 return self.send(401, {"error": "signed out", "mode": auth_mode()})
-            return self.send(200, {"user": user or None, "mode": auth_mode()})
+            acc = access_of(user)
+            info = users().get(user or "", {})
+            return self.send(200, {"user": user or None, "mode": auth_mode(), **acc, "employeeId": info.get("employeeId", "")})
         if user is None:
             return self.send(401, {"error": "Please sign in."})
+        acc = access_of(user)
         if path == "/data":
             since = dict(p.split("=", 1) for p in query.split("&") if "=" in p).get("since")
             if since and since.isdigit() and int(since) == rev:
                 return self.send(200, {"unchanged": True, "rev": rev})
-            return self.send(200, {"rev": rev, "data": data})
+            return self.send(200, {"rev": rev, "data": visible_data(data, acc["admin"], set(acc["areas"]))})
+        if path == "/admin/access":
+            if not acc["admin"]:
+                return self.send(403, {"error": "Only an admin can manage logins."})
+            u = users()
+            listing = [{"username": n, "role": v.get("role") or "admin", "employeeId": v.get("employeeId", "")} for n, v in sorted(u.items())]
+            return self.send(200, {"users": listing, "roles": roles(), "areas": AREAS})
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -373,8 +465,76 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(401, {"error": "Please sign in."})
         if path == "/password":
             return self.change_password(user, body)
+        acc = access_of(user)
         if path == "/ops":
-            return self.apply_ops(body)
+            return self.apply_ops(body, acc)
+        if path.startswith("/admin/"):
+            if not acc["admin"]:
+                return self.send(403, {"error": "Only an admin can manage logins."})
+            return self.admin(path, body, user)
+        self.send(404, {"error": "not found"})
+
+    def admin(self, path: str, body: dict, me: str):
+        """User and role management (admins only)."""
+        try:
+            with auth_lock:
+                u = users()
+                if path == "/admin/roles":
+                    rs = body.get("roles")
+                    if not isinstance(rs, list):
+                        raise BadRequest("roles must be a list")
+                    clean = []
+                    for r in rs:
+                        rid = str(r.get("id", "")).strip()
+                        name = str(r.get("name", "")).strip()
+                        if not rid or not name or rid == "admin":
+                            raise BadRequest("Every role needs a name (and 'admin' is reserved).")
+                        clean.append({"id": rid, "name": name, "areas": [a for a in r.get("areas", []) if a in AREAS]})
+                    in_use = {v.get("role") for v in u.values()} - {None, "admin"}
+                    missing = in_use - {r["id"] for r in clean}
+                    if missing:
+                        raise BadRequest("A role still has logins; move them to another role first.")
+                    save_roles(clean)
+                    return self.send(200, {"roles": clean})
+                if path == "/admin/users":
+                    name = str(body.get("username", "")).strip()
+                    if not name or any(c in name for c in ":$ "):
+                        raise BadRequest("Usernames cannot be empty or contain spaces, ':' or '$'.")
+                    role = str(body.get("role", "")).strip() or "admin"
+                    if role != "admin" and role not in {r["id"] for r in roles()}:
+                        raise BadRequest("Unknown role.")
+                    existing = u.get(name)
+                    if body.get("create") and existing:
+                        raise BadRequest(f"There is already a login called {name}.")
+                    if existing and name == me and role != "admin":
+                        raise BadRequest("You can't remove your own admin access.")
+                    pw = str(body.get("password") or "")
+                    if not existing and len(pw) < 10:
+                        raise BadRequest("The password needs at least 10 characters.")
+                    if pw and len(pw) < 10:
+                        raise BadRequest("The password needs at least 10 characters.")
+                    entry = dict(existing or {})
+                    entry["role"] = role
+                    entry["employeeId"] = str(body.get("employeeId") or "")
+                    if pw:
+                        entry["hash"] = hash_password(pw)
+                    u[name] = entry
+                    save_users(u)
+                    if pw and existing:
+                        end_session(None, name)  # password reset signs them out everywhere
+                    return self.send(200, {"ok": True})
+                if path == "/admin/users/delete":
+                    name = str(body.get("username", ""))
+                    if name == me:
+                        raise BadRequest("You can't delete your own login.")
+                    if name not in u:
+                        raise BadRequest("No such login.")
+                    u.pop(name)
+                    save_users(u)
+                    end_session(None, name)
+                    return self.send(200, {"ok": True})
+        except BadRequest as e:
+            return self.send(400, {"error": str(e)})
         self.send(404, {"error": "not found"})
 
     def login(self, body: dict):
@@ -420,11 +580,13 @@ class Handler(BaseHTTPRequestHandler):
         token, ttl = new_session(user, True)
         self.send(200, {"ok": True}, cookie=self.cookie(token, ttl))
 
-    def apply_ops(self, body: dict):
+    def apply_ops(self, body: dict, acc: dict):
         try:
             ops = body.get("ops")
             if not isinstance(ops, list) or not ops:
                 raise BadRequest("ops must be a non-empty list")
+            for o in ops:
+                check_op(o, acc["admin"], set(acc["areas"]))
             with lock:
                 prev = (state["rev"], state["data"])
                 d = state["data"]
@@ -437,6 +599,8 @@ class Handler(BaseHTTPRequestHandler):
                     state["rev"], state["data"] = prev  # keep memory == disk
                     raise
                 rev = state["rev"]
+        except Forbidden as e:
+            return self.send(403, {"error": str(e)})
         except (BadRequest, ValueError, AttributeError) as e:
             return self.send(400, {"error": str(e)})
         except OSError as e:

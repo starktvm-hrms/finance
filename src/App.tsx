@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Directory from "./pages/Directory";
 import Login from "./pages/Login";
 import People from "./pages/People";
 import { BRAND_MARK } from "./lib/brand";
+import { areaOfPage } from "./lib/access";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
@@ -24,8 +25,13 @@ const PAGES: { id: PageId; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const { ready, error, data, storageName, sync, auth, user, signOut } = useStore();
+  const { ready, error, data, storageName, sync, auth, user, signOut, access, can } = useStore();
+  const allowedPages = PAGES.filter((p) => can(areaOfPage(p.id)));
   const { page, params } = useRoute();
+  // Landing on the dashboard without access to it: open the first page this role has.
+  useEffect(() => {
+    if (ready && page === "dashboard" && !can("dashboard") && allowedPages[0]) go(allowedPages[0].id);
+  }, [ready, page, access]); // eslint-disable-line react-hooks/exhaustive-deps
   const [navOpen, setNavOpen] = useState(false);
   const nav = (id: PageId, params?: Record<string, string>) => {
     go(id, params);
@@ -50,7 +56,7 @@ export default function App() {
           </div>
         </div>
         <nav>
-          {PAGES.map((p) => (
+          {allowedPages.map((p) => (
             <button key={p.id} className={`nav-item ${isActive(p.id) ? "active" : ""}`} onClick={() => nav(p.id)}>
               <span className="nav-icon">{p.icon}</span>
               {p.label}
@@ -63,7 +69,10 @@ export default function App() {
         </div>
         {auth === "signed-in" && (
           <div className="sidebar-user">
-            <span className="who" title={`Signed in as ${user}`}>{user}</span>
+            <span className="who" title={`Signed in as ${user} (${access.roleName})`}>
+              {user}
+              <span className="muted small"> · {access.roleName}</span>
+            </span>
             <button className="btn ghost" onClick={signOut}>Sign out</button>
           </div>
         )}
@@ -74,9 +83,21 @@ export default function App() {
           <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
           <span className="topbar-title">{pageLabel}</span>
         </div>
-        {error && <div className="alert">Changes are not being saved: {error}. Keep this tab open; it retries automatically.</div>}
+        {error && (
+          <div className="alert">
+            {sync === "error" ? <>Changes are not being saved: {error}. Keep this tab open; it retries automatically.</> : error}
+          </div>
+        )}
         {!ready ? (
           <div className="empty">Loading…</div>
+        ) : !can(areaOfPage(page)) ? (
+          <div className="page">
+            <div className="card empty">
+              <h2>No access</h2>
+              <p className="muted">Your role ({access.roleName}) doesn't include this page. Ask an admin if you need it.</p>
+              {allowedPages[0] && <button className="btn primary" onClick={() => nav(allowedPages[0].id)}>Go to {allowedPages[0].label}</button>}
+            </div>
+          </div>
         ) : (
           <>
             {page === "dashboard" && <Dashboard />}

@@ -9,7 +9,8 @@ import { clientCode } from "../lib/jobno";
 const blank = (): Client => ({ id: uid(), name: "", contactName: "", email: "", phone: "", address: "", taxId: "", notes: "", createdAt: new Date().toISOString() });
 
 export default function Clients() {
-  const { data, upsert, remove } = useStore();
+  const { data, upsert, remove, can, access } = useStore();
+  const seeMoney = can("invoices");
   const [edit, setEdit] = useState<Client | null>(null);
   const [q, setQ] = useState("");
   const s = data.settings;
@@ -51,7 +52,7 @@ export default function Clients() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Client</th><th>Contact</th><th className="num">Jobs</th><th className="num">Revenue</th><th className="num">Outstanding</th><th /></tr>
+              <tr><th>Client</th><th>Contact</th><th className="num">Jobs</th>{seeMoney && <><th className="num">Revenue</th><th className="num">Outstanding</th></>}<th /></tr>
             </thead>
             <tbody>
               {rows.map(({ c, projects, billed, due }) => (
@@ -59,9 +60,13 @@ export default function Clients() {
                   <td><strong>{c.name}</strong></td>
                   <td>{c.contactName}<div className="muted small">{c.email}</div></td>
                   <td className="num">{projects}</td>
-                  <td className="num">{money(billed, s)}</td>
-                  <td className={`num ${due ? "warn" : ""}`}>{money(due, s)}</td>
-                  <td className="actions"><button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(c))}>Delete</button></td>
+                  {seeMoney && (
+                    <>
+                      <td className="num">{money(billed, s)}</td>
+                      <td className={`num ${due ? "warn" : ""}`}>{money(due, s)}</td>
+                    </>
+                  )}
+                  <td className="actions">{access.admin && <button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(c))}>Delete</button>}</td>
                 </tr>
               ))}
             </tbody>

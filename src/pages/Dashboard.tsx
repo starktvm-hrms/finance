@@ -14,7 +14,7 @@ const RANGES = [
 ];
 
 export default function Dashboard() {
-  const { data } = useStore();
+  const { data, can } = useStore();
   const s = data.settings;
   const [months, setMonths] = useState(6);
   const m = computeMetrics(data, months);
@@ -24,19 +24,21 @@ export default function Dashboard() {
   const maxCat = m.byCategory[0]?.value || 1;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const w = workflowQueues(data);
-  const tiles: { title: string; sub: string; count: number; hint: string; page: PageId; params: Record<string, string> }[] = [
-    { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" } },
-    { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} in production and other estimates awaiting the client's decision`, page: "estimates", params: { status: "sent", kind: "production" } },
-    { title: "Media Estimates", sub: "For approval", count: w.mediaForApproval.length, hint: `${fm(w.mediaApprovalValue)} in media estimates awaiting the client's decision`, page: "estimates", params: { type: "media", status: "sent" } },
-    { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" } },
-    { title: "Invoice", sub: "To collect", count: w.invoiceToCollect.length, hint: `${fm(w.toCollectValue)} sent, not yet paid`, page: "invoices", params: { status: "unpaid" } },
+  const allTiles: { title: string; sub: string; count: number; hint: string; page: PageId; params: Record<string, string>; needs: string[] }[] = [
+    { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" }, needs: ["jobs", "estimates"] },
+    { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} in production and other estimates awaiting the client's decision`, page: "estimates", params: { status: "sent", kind: "production" }, needs: ["estimates"] },
+    { title: "Media Estimates", sub: "For approval", count: w.mediaForApproval.length, hint: `${fm(w.mediaApprovalValue)} in media estimates awaiting the client's decision`, page: "estimates", params: { type: "media", status: "sent" }, needs: ["estimates"] },
+    { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" }, needs: ["estimates", "invoices"] },
+    { title: "Invoice", sub: "To collect", count: w.invoiceToCollect.length, hint: `${fm(w.toCollectValue)} sent, not yet paid`, page: "invoices", params: { status: "unpaid" }, needs: ["invoices"] },
   ];
+  const tiles = allTiles.filter((t) => t.needs.every(can));
+  const seeMoney = can("invoices") && can("expenses");
 
   return (
     <div className="page">
       <PageHeader title="Dashboard" />
 
-      <div className="queues" role="list" aria-label="Work queues">
+      {tiles.length > 0 && <div className="queues" role="list" aria-label="Work queues">
         {tiles.map((t) => (
           <button key={t.title + t.sub} role="listitem" className="card queue" onClick={() => go(t.page, t.params)} title={t.hint}>
             <span className="queue-title">{t.title}</span>
@@ -44,8 +46,10 @@ export default function Dashboard() {
             <span className="queue-count">{t.count.toLocaleString(s.locale)}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
+      {seeMoney && (
+        <>
       <PageHeader
         title="Financials"
         subtitle="Cash basis: revenue counts invoices when paid, excluding tax."
@@ -158,6 +162,8 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

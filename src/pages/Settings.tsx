@@ -14,7 +14,7 @@ const CURRENCIES = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateSettings, replaceAll, upsert, storageName, shared, auth, user, changePassword } = useStore();
+  const { data, updateSettings, replaceAll, upsert, storageName, shared, auth, user, changePassword, access, can } = useStore();
   const [toolMsg, setToolMsg] = useState("");
   const state = gstState(data.settings.taxId, data.settings.stateCode).replace("00", "32");
   const missingTax = data.clients.filter((c) => !c.taxId?.trim() || !c.pan?.trim()).length;
@@ -186,21 +186,21 @@ export default function SettingsPage() {
         <h3>Test data &amp; tidy-up</h3>
         <p className="muted">For trying things out. Test GSTIN and PAN numbers follow the real format (state {state}) but are made up; clients that get them are marked “{TEST_MARK}” in their notes and can be cleared again.</p>
         <div className="row gap wrap">
-          <button className="btn" disabled={!missingTax} onClick={() =>
+          <button className="btn" disabled={!missingTax || !can("directory")} onClick={() =>
             window.confirm(`Add test GSTIN and PAN to ${missingTax} client(s) that don't have them?`) &&
             runTool("Test GSTIN & PAN", () => { const cs = fillTestTaxIds(data, state); cs.forEach((c) => upsert("clients", c)); return cs.length; })}>
             Fill test GSTIN &amp; PAN ({missingTax})
           </button>
-          <button className="btn" disabled={!testClients} onClick={() =>
+          <button className="btn" disabled={!testClients || !can("directory")} onClick={() =>
             window.confirm(`Remove the test GSTIN and PAN from ${testClients} client(s)?`) &&
             runTool("Test GSTIN & PAN removed", () => { const cs = removeTestTaxIds(data, state); cs.forEach((c) => upsert("clients", c)); return cs.length; })}>
             Remove test GSTIN &amp; PAN ({testClients})
           </button>
-          <button className="btn" disabled={!unnumbered} onClick={() =>
+          <button className="btn" disabled={!unnumbered || !can("jobs")} onClick={() =>
             runTool("Job numbers", () => { const { jobs, next } = numberJobs(data); jobs.forEach((j) => upsert("projects", j)); updateSettings({ nextJobNumber: next }); return jobs.length; })}>
             Number jobs without a Job No. ({unnumbered})
           </button>
-          <button className="btn" disabled={!untyped} onClick={() =>
+          <button className="btn" disabled={!untyped || !can("jobs")} onClick={() =>
             runTool("Job types", () => { const jobs = typeJobs(data); jobs.forEach((j) => upsert("projects", j)); return jobs.length; })}>
             Set Type on jobs without one ({untyped})
           </button>
@@ -218,9 +218,9 @@ export default function SettingsPage() {
         </p>
         <div className="row gap wrap">
           <button className="btn" onClick={() => downloadFile(`agency-finance-backup-${today()}.json`, JSON.stringify(data, null, 2), "application/json")}>Download backup (JSON)</button>
-          <button className="btn" onClick={() => file.current?.click()}>Restore from backup…</button>
+          {access.admin && <button className="btn" onClick={() => file.current?.click()}>Restore from backup…</button>}
           <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importJSON(e.target.files[0])} />
-          {browserData && (
+          {browserData && access.admin && (
             <button
               className="btn"
               title="Data saved in this browser before server storage was turned on"
@@ -232,10 +232,10 @@ export default function SettingsPage() {
               Use data saved in this browser…
             </button>
           )}
-          <button className="btn" onClick={() => window.confirm("Replace current data with sample data?") && replaceAll(sampleData())}>Load sample data</button>
-          <button className="btn danger" onClick={() => window.confirm("Erase all clients, vendors, jobs, estimates, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 } })}>
+          {access.admin && <button className="btn" onClick={() => window.confirm("Replace current data with sample data?") && replaceAll({ ...sampleData(), employees: data.employees, departments: data.departments, branches: data.branches })}>Load sample data</button>}
+          {access.admin && <button className="btn danger" onClick={() => window.confirm("Erase all clients, vendors, jobs, estimates, invoices and expenses? Settings, employees, departments and branches are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 }, employees: data.employees, departments: data.departments, branches: data.branches })}>
             Clear all data
-          </button>
+          </button>}
         </div>
       </div>
     </div>

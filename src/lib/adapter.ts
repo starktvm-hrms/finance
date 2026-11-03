@@ -26,9 +26,33 @@ export class SignedOutError extends Error {
   }
 }
 
+/** Thrown when the server refuses a change this user has no access to. */
+export class ForbiddenError extends Error {
+  constructor(message = "You don't have access to do that.") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
 export interface Me {
   user: string | null; // null in "legacy" mode (server's own login in front)
   mode: "on" | "legacy" | "locked";
+  admin?: boolean;
+  role?: string;
+  roleName?: string;
+  areas?: string[];
+  employeeId?: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  areas: string[];
+}
+export interface Login {
+  username: string;
+  role: string;
+  employeeId: string;
 }
 
 export interface AuthApi {
@@ -37,6 +61,11 @@ export interface AuthApi {
   logout(): Promise<void>;
   changePassword(current: string, next: string): Promise<void>;
   branding(): Promise<{ agencyName: string; logo: string }>;
+  // Admin only
+  access(): Promise<{ users: Login[]; roles: Role[] }>;
+  saveRoles(roles: Role[]): Promise<void>;
+  saveLogin(login: Login & { password?: string; create?: boolean }): Promise<void>;
+  deleteLogin(username: string): Promise<void>;
 }
 
 const KEY = "agency-finance:data:v1";
@@ -82,6 +111,9 @@ export function serverAdapter(base: string): DataAdapter {
         /* not JSON */
       }
       throw new SignedOutError(msg);
+    }
+    if (res.status === 403) {
+      throw new ForbiddenError((await res.json().catch(() => ({}))).error ?? undefined);
     }
     if (res.status === 429 || res.status === 400) {
       throw new Error((await res.json().catch(() => ({}))).error ?? `Error ${res.status}`);
@@ -134,6 +166,18 @@ export function serverAdapter(base: string): DataAdapter {
       },
       async branding() {
         return check(await fetch(`${url}/branding`, { cache: "no-store", credentials: "same-origin" }));
+      },
+      async access() {
+        return check(await fetch(`${url}/admin/access`, { cache: "no-store", credentials: "same-origin" }));
+      },
+      async saveRoles(roles) {
+        await check(await fetch(`${url}/admin/roles`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roles }) }));
+      },
+      async saveLogin(login) {
+        await check(await fetch(`${url}/admin/users`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(login) }));
+      },
+      async deleteLogin(username) {
+        await check(await fetch(`${url}/admin/users/delete`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) }));
       },
     },
   };

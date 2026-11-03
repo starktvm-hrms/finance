@@ -20,7 +20,8 @@ export const PROJECT_STATUS: Record<ProjectStatus, { label: string; tone: string
 type JobFilter = ProjectStatus | "all" | "needs_estimate";
 
 export default function Projects({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings } = useStore();
+  const { data, upsert, remove, updateSettings, can, access } = useStore();
+  const seeMoney = can("invoices") && can("expenses"); // invoiced / costs / profit need both
   const s = data.settings;
   const [edit, setEdit] = useState<Project | null>(null);
   const [status, setStatus] = useState<JobFilter>(() => {
@@ -68,7 +69,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
     upsert("projects", next);
     // Remember new products / sub-products on the client so they can be picked next time.
     const client = data.clients.find((c) => c.id === next.clientId);
-    if (client && next.product) {
+    if (client && next.product && can("directory")) {
       const products = [...(client.products ?? [])];
       const i = products.findIndex((p) => p.name.toLowerCase() === next.product!.toLowerCase());
       if (i < 0) products.push({ name: next.product, subProducts: next.subProduct ? [next.subProduct] : [] });
@@ -136,7 +137,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         ) : (
           <table className="table jobs-table">
             <thead>
-              <tr><th>Job No.</th><th>Job</th>{typeTab === "all" && <th>Category</th>}<th>Type</th><th>Status</th><th>Estimate</th><th className="num">Budget</th><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th><th /></tr>
+              <tr><th>Job No.</th><th>Job</th>{typeTab === "all" && <th>Category</th>}<th>Type</th><th>Status</th>{can("estimates") && <th>Estimate</th>}<th className="num">Budget</th>{seeMoney && <><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th></>}<th /></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -171,7 +172,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                         </div>
                       )}
                     </td>
-                    <td onClick={(e) => e.stopPropagation()}>
+                    {can("estimates") && <td onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const est = latestEstimate(p.id);
                         if (needsEstimate(data, p.id))
@@ -183,16 +184,20 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                           </button>
                         );
                       })()}
-                    </td>
+                    </td>}
                     <td className="num">{money(p.budget, s)}</td>
-                    <td className="num">{money(f.invoiced, s)}</td>
-                    <td className="num">{money(f.cost, s)}</td>
-                    <td className={`num ${f.profit < 0 ? "bad" : "good"}`}>{money(f.profit, s)}</td>
-                    <td style={{ minWidth: 90 }}>
-                      <div className="bar-track" title={`${pct}% of budget invoiced`}><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
-                      <div className="muted small">{pct}%</div>
-                    </td>
-                    <td className="actions"><button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(p))}>Delete</button></td>
+                    {seeMoney && (
+                      <>
+                        <td className="num">{money(f.invoiced, s)}</td>
+                        <td className="num">{money(f.cost, s)}</td>
+                        <td className={`num ${f.profit < 0 ? "bad" : "good"}`}>{money(f.profit, s)}</td>
+                        <td style={{ minWidth: 90 }}>
+                          <div className="bar-track" title={`${pct}% of budget invoiced`}><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+                          <div className="muted small">{pct}%</div>
+                        </td>
+                      </>
+                    )}
+                    <td className="actions">{access.admin && <button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(p))}>Delete</button>}</td>
                   </tr>
                 );
               })}
