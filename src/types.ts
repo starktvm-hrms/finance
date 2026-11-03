@@ -18,6 +18,24 @@ export interface Settings {
   nextJobNumber: number;
   departmentHeads: string[]; // people who can approve new jobs
   logo: string; // small data-URL image shown on estimates and invoices ("" = none)
+  // Letterhead (printed on estimates)
+  agencyPhone: string;
+  agencyFax: string;
+  agencyWebsite: string;
+  agencyPan: string;
+  agencyCin: string;
+  stateCode: string; // GST state code, e.g. 32 (Kerala); blank = first 2 digits of the GSTIN
+  // Bank details printed in the estimate footer
+  bankAccountName: string;
+  bankName: string;
+  bankBranch: string;
+  bankAccountNo: string;
+  bankIfsc: string;
+  bankSwift: string;
+  estimateTerms: string; // one per line; {days} = validity, {agency} = agency name
+  signatureLabels: string; // comma-separated, printed above the signature lines
+  productionEstimatePrefix: string; // PE → PE/26-27/369
+  mediaEstimatePrefix: string; // ME → ME/26-27/370
 }
 
 /** Countries an estimate can be billed in; sets the currency and number format. */
@@ -164,6 +182,8 @@ export interface Estimate {
   decidedDate: string; // approved / rejected on
   invoiceId: ID | ""; // set once converted
   title?: string;
+  jobType?: string; // printed as "Job Type", e.g. Brochure Printing
+  productLabel?: string; // printed as "Product"; defaults to the job's product + sub-product
   header?: string; // sanitised rich-text HTML shown above the line items
   remarks?: string; // sanitised rich-text HTML shown below the totals
   clientAddress?: string; // billing address as printed on this estimate

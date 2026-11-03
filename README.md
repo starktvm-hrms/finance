@@ -16,6 +16,12 @@ default, and can sync to your website's backend when you're ready.
   estimate form is a full page: client (GSTIN, PAN, address), job no., country/currency,
   title, rich-text header and remarks, discount by % or value, tax, round off and grand total.
   Rich text is sanitised with DOMPurify on save and on display.
+- **Production estimate print** — A4 portrait, in the agency's format: letterhead (logo, address,
+  phone, PAN, GSTIN, state code, CIN, website), Est No. like `PE/26-27/369`, job no./date,
+  job type, product, client with GSTIN/PAN, Sl. No./Description/Amount table (first line bold,
+  `•` lines as bullets), SGST + CGST (same state) or IGST, round off, grand total, amount in
+  words (lakh/crore), signature row, E & OE, terms and bank details (all set in **Settings**).
+  Media estimates will get their own landscape layout.
 - **Invoices** — line items, discount, tax (GST/VAT), auto-numbering, payment terms,
   draft → sent → paid workflow, automatic *overdue* detection, print / save as PDF, CSV export.
 - **Expenses** — categories, link to a project or mark as overhead, recurring flag,

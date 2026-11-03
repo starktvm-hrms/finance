@@ -18,6 +18,23 @@ export const defaultSettings: Settings = {
   nextJobNumber: 1,
   departmentHeads: [],
   logo: "",
+  agencyPhone: "",
+  agencyFax: "",
+  agencyWebsite: "",
+  agencyPan: "",
+  agencyCin: "",
+  stateCode: "",
+  bankAccountName: "",
+  bankName: "",
+  bankBranch: "",
+  bankAccountNo: "",
+  bankIfsc: "",
+  bankSwift: "",
+  estimateTerms:
+    "This estimate is valid only for a period of {days} days\nPart payment/advance, if any, should be by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT",
+  signatureLabels: "Authorized Signatory, AE, AS",
+  productionEstimatePrefix: "PE",
+  mediaEstimatePrefix: "ME",
   paymentTermsDays: 15,
 };
 

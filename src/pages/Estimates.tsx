@@ -2,9 +2,10 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { COUNTRIES, ESTIMATE_TYPES, type CountryCode, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
-import { addDays, docFormat, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
+import { addDays, docFormat, financialYear, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
+import ProductionEstimate from "../components/ProductionEstimate";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
-import { DocumentView, ItemsEditor, newLine } from "../components/Doc";
+import { ItemsEditor, newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
 const LazyEditor = lazy(() => import("../components/RichText"));
 const RichTextEditor = (props: { value: string; onChange: (html: string) => void; placeholder?: string; label: string }) => (
@@ -114,7 +115,9 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
 
   const save = (e: Estimate) => {
     if (isNew(e) && !e.number) {
-      e = { ...e, number: `${s.estimatePrefix}${String(s.nextEstimateNumber).padStart(4, "0")}` };
+      // PE/26-27/369 for production estimates, ME/26-27/370 for media estimates
+      const prefix = estimateType(e) === "media" ? s.mediaEstimatePrefix : s.productionEstimatePrefix;
+      e = { ...e, number: `${prefix}/${financialYear(e.issueDate)}/${s.nextEstimateNumber}` };
       updateSettings({ nextEstimateNumber: s.nextEstimateNumber + 1 });
     }
     upsert("estimates", e);
@@ -240,21 +243,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
 
       {view && (
         <Modal title={`${typeInfo(estimateType(view))?.label} estimate ${view.number}`} onClose={() => setView(null)} wide>
-          <DocumentView
-            title={`${typeInfo(estimateType(view))?.label.toUpperCase()} ESTIMATE`}
-            number={view.number}
-            clientId={view.clientId}
-            projectId={view.projectId}
-            dates={[["Issued", view.issueDate], ["Valid until", view.validUntil]]}
-            badge={<Badge tone={ESTIMATE_STATUS[displayStatus(view)].tone}>{ESTIMATE_STATUS[displayStatus(view)].label}</Badge>}
-            doc={view}
-            notes={view.notes}
-            totalLabel="Grand total"
-            heading={view.title}
-            header={view.header}
-            remarks={view.remarks}
-            billTo={{ address: view.clientAddress || undefined }}
-          />
+          {/* Media estimates get their own landscape layout later; until then all use this one. */}
+          <ProductionEstimate est={view} />
           <div className="form-actions no-print">
             <button
               className="btn ghost danger"
@@ -307,8 +297,13 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
   };
   const pickJob = (id: string) => {
     const job = data.projects.find((p) => p.id === id);
-    set({ projectId: id, title: est.title || job?.name || "" });
+    set({
+      projectId: id,
+      title: est.title || job?.name || "",
+      productLabel: est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" "),
+    });
   };
+  const jobTypes = [...new Set(data.estimates.map((e) => e.jobType).filter((x): x is string => !!x))].sort();
   const pickCountry = (code: CountryCode) =>
     set({ country: code, taxRate: code === "IN" ? (est.country === "IN" ? est.taxRate : s.defaultTaxRate) : 0 });
 
@@ -364,6 +359,11 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
         </div>
 
         <Field label="Title *" span={2}><input required value={est.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="Enter the job title" /></Field>
+        <Field label="Job type">
+          <input list="job-types" value={est.jobType ?? ""} onChange={(e) => set({ jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
+          <datalist id="job-types">{jobTypes.map((t) => <option key={t} value={t} />)}</datalist>
+        </Field>
+        <Field label="Product (printed)"><input value={est.productLabel ?? ""} onChange={(e) => set({ productLabel: e.target.value })} placeholder="From the job's product" /></Field>
         <div className="field span2">
           <span>Header</span>
           <RichTextEditor label="Header" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Enter the job header" />
