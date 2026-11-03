@@ -2,10 +2,10 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { COUNTRIES, ESTIMATE_TYPES, type CountryCode, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
-import { addDays, docFormat, financialYear, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
-import ProductionEstimate from "../components/ProductionEstimate";
-import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
-import { ItemsEditor, newLine } from "../components/Doc";
+import { addDays, amountInWords, docFormat, financialYear, fmtDate, gstSplit, gstState, invoiceTotals, money, today, uid } from "../lib/util";
+import ProductionEstimate, { EstimateFooter, Letterhead, SignatureBlock, dmyDate, plainAmount } from "../components/ProductionEstimate";
+import { AutoTextarea, Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
+import { newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
 const LazyEditor = lazy(() => import("../components/RichText"));
 const RichTextEditor = (props: { value: string; onChange: (html: string) => void; placeholder?: string; label: string }) => (
@@ -278,10 +278,14 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
   const s = data.settings;
   const [est, setEst] = useState(initial);
   const client = data.clients.find((c) => c.id === est.clientId);
+  const job = data.projects.find((p) => p.id === est.projectId);
   const jobs = data.projects.filter((p) => p.clientId === est.clientId);
   const fmt = docFormat(est.country, s);
-  const subtotal = invoiceTotals({ ...est, discount: 0 }).subtotal;
+  const t = invoiceTotals(est);
   const type = typeInfo(estimateType(est))!;
+  const split = gstSplit(gstState(s.taxId, s.stateCode), client?.taxId, est.taxRate);
+  const jobTypes = [...new Set(data.estimates.map((e) => e.jobType).filter((x): x is string => !!x))].sort();
+  const previewNo = `${estimateType(est) === "media" ? s.mediaEstimatePrefix : s.productionEstimatePrefix}/${financialYear(est.issueDate || today())}/${s.nextEstimateNumber}`;
 
   /** Keep a percentage discount in step with the lines. */
   const withDiscount = (e: Estimate): Estimate => {
@@ -290,20 +294,21 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
     return { ...e, discount: Math.round(sub * e.discountPct) / 100 };
   };
   const set = (patch: Partial<Estimate>) => setEst((e) => withDiscount({ ...e, ...patch }));
+  const setItem = (id: string, patch: Partial<Estimate["items"][number]>) =>
+    set({ items: est.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
 
   const pickClient = (id: string) => {
     const c = data.clients.find((x) => x.id === id);
     set({ clientId: id, projectId: "", clientAddress: c?.address ?? "" });
   };
   const pickJob = (id: string) => {
-    const job = data.projects.find((p) => p.id === id);
+    const j = data.projects.find((p) => p.id === id);
     set({
       projectId: id,
-      title: est.title || job?.name || "",
-      productLabel: est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" "),
+      title: est.title || j?.name || "",
+      productLabel: est.productLabel || [j?.product, j?.subProduct].filter(Boolean).join(" "),
     });
   };
-  const jobTypes = [...new Set(data.estimates.map((e) => e.jobType).filter((x): x is string => !!x))].sort();
   const pickCountry = (code: CountryCode) =>
     set({ country: code, taxRate: code === "IN" ? (est.country === "IN" ? est.taxRate : s.defaultTaxRate) : 0 });
 
@@ -315,111 +320,158 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
           {isNew ? `Add ${type.label} Estimate` : `Edit ${type.label} Estimate ${est.number}`}
         </h1>
       </div>
-      <form className="card form estimate-form" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
-        <div className="span2 row between top estimate-top">
-          <div className="estimate-brand">
-            {s.logo ? <img src={s.logo} alt="" /> : null}
-            <span>{s.agencyName}</span>
+
+      <form className="estimate-editor" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
+        {/* The sheet: everything here prints, laid out like the printed estimate. */}
+        <div className="pe-doc pe-edit">
+          <div className="pe-fixed" title="From Settings → Agency / Letterhead"><Letterhead /></div>
+
+          <h1 className="pe-title">ESTIMATE</h1>
+
+          <div className="pe-meta">
+            <dl className="pe-meta-left">
+              <dt>Est No. :</dt>
+              <dd><span className="pe-auto" title="Given when you save">{est.number || previewNo}</span></dd>
+              <dt>Date :</dt>
+              <dd><input required type="date" aria-label="Estimate date" value={est.issueDate} onChange={(e) => set({ issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></dd>
+              <dt>Job No. :</dt>
+              <dd>
+                <select aria-label="Job" value={est.projectId} onChange={(e) => pickJob(e.target.value)} disabled={!est.clientId}>
+                  <option value="">{est.clientId ? "Select…" : "Client first"}</option>
+                  {jobs.map((p) => <option key={p.id} value={p.id}>{p.number ?? p.name}</option>)}
+                </select>
+              </dd>
+              <dt>Date :</dt>
+              <dd><span className="pe-auto">{job ? dmyDate(job.startDate) : "—"}</span></dd>
+              <dt>Job Type :</dt>
+              <dd className="span3">
+                <input aria-label="Job type" list="job-types" value={est.jobType ?? ""} onChange={(e) => set({ jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
+                <datalist id="job-types">{jobTypes.map((x) => <option key={x} value={x} />)}</datalist>
+              </dd>
+              <dt>Product :</dt>
+              <dd className="span3"><input aria-label="Product" value={est.productLabel ?? ""} onChange={(e) => set({ productLabel: e.target.value })} placeholder="From the job's product" /></dd>
+            </dl>
+            <dl className="pe-meta-right">
+              <dt>To:</dt>
+              <dd className="pe-to">
+                <select required aria-label="Client" value={est.clientId} onChange={(e) => pickClient(e.target.value)}>
+                  <option value="" disabled>Select client…</option>
+                  {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <AutoTextarea aria-label="Client address" value={est.clientAddress ?? ""} onChange={(e) => set({ clientAddress: e.target.value })} placeholder="Billing address" />
+              </dd>
+              <dt>GSTIN:</dt><dd><span className="pe-auto">{client?.taxId || "—"}</span></dd>
+              <dt>PAN No.:</dt><dd><span className="pe-auto">{client?.pan || "—"}</span></dd>
+            </dl>
           </div>
-          <Field label="Date *"><input required type="date" value={est.issueDate} onChange={(e) => set({ issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></Field>
+
+          <div className="pe-rich-edit">
+            <RichTextEditor label="Header (optional, prints above the table)" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Header (optional) — prints above the table" />
+          </div>
+
+          <table className="pe-table pe-table-edit">
+            <thead>
+              <tr><th className="pe-sl">Sl. No.</th><th>Description</th><th className="pe-amt">Amount({fmt.currency})</th><th className="pe-x" /></tr>
+            </thead>
+            <tbody>
+              {est.items.map((it, i) => (
+                <tr key={it.id}>
+                  <td className="pe-sl">{i + 1}</td>
+                  <td>
+                    <AutoTextarea
+                      required
+                      aria-label={`Line ${i + 1} description`}
+                      value={it.description}
+                      onChange={(e) => setItem(it.id, { description: e.target.value })}
+                      placeholder={"Heading of the work (prints bold)\n• detail lines start with •"}
+                    />
+                  </td>
+                  <td className="pe-amt">
+                    <input className="num" type="number" min={0} step="0.01" aria-label={`Line ${i + 1} amount`} value={it.rate || ""} placeholder="0.00" onChange={(e) => setItem(it.id, { rate: Number(e.target.value) })} />
+                    <label className="pe-qty-edit">
+                      Qty <input type="number" min={0} step="0.01" aria-label={`Line ${i + 1} quantity`} value={it.quantity} onChange={(e) => setItem(it.id, { quantity: Number(e.target.value) })} />
+                    </label>
+                    {Number(it.quantity) !== 1 && <div className="pe-qty">= {plainAmount(it.quantity * it.rate, fmt.locale)}</div>}
+                  </td>
+                  <td className="pe-x">
+                    <button type="button" className="icon-btn" disabled={est.items.length === 1} onClick={() => set({ items: est.items.filter((x) => x.id !== it.id) })} aria-label={`Remove line ${i + 1}`}>×</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button type="button" className="btn ghost pe-add" onClick={() => set({ items: [...est.items, newLine()] })}>+ Add line</button>
+
+          <div className="pe-totals">
+            <div className="pe-words">Amount in Words: {amountInWords(t.total, fmt.currency)}</div>
+            <dl>
+              <dt>Total:</dt><dd>{plainAmount(t.subtotal, fmt.locale)}</dd>
+              <dt className="pe-inline">
+                Discount
+                <input type="number" min={0} max={100} step="0.01" aria-label="Discount percent" value={est.discountPct || ""} placeholder="0"
+                  onChange={(e) => set({ discountPct: Number(e.target.value) || 0, ...(Number(e.target.value) ? {} : { discount: 0 }) })} />%:
+              </dt>
+              <dd>
+                <input className="num" type="number" min={0} step="0.01" aria-label="Discount amount" value={est.discount || ""} placeholder="0.00"
+                  onChange={(e) => setEst({ ...est, discount: Number(e.target.value) || 0, discountPct: 0 })} />
+              </dd>
+              {t.discount > 0 && <><dt>Taxable Value:</dt><dd>{plainAmount(t.net, fmt.locale)}</dd></>}
+              {split === "cgst" && (
+                <>
+                  <dt className="pe-inline">SGST ({est.taxRate / 2}%):</dt><dd>{plainAmount(t.tax / 2, fmt.locale)}</dd>
+                  <dt>CGST ({est.taxRate / 2}%):</dt><dd>{plainAmount(t.tax / 2, fmt.locale)}</dd>
+                </>
+              )}
+              {split === "igst" && <><dt>IGST ({est.taxRate}%):</dt><dd>{plainAmount(t.tax, fmt.locale)}</dd></>}
+              <dt className="pe-inline">
+                <label className="pe-check"><input type="checkbox" checked={!!est.roundOff} onChange={(e) => set({ roundOff: e.target.checked })} /> Round Off:</label>
+              </dt>
+              <dd>{plainAmount(t.roundOff, fmt.locale)}</dd>
+              <dt className="pe-grand">Grand Total:</dt><dd className="pe-grand">{plainAmount(t.total, fmt.locale)}</dd>
+            </dl>
+          </div>
+
+          <div className="pe-rich-edit">
+            <RichTextEditor label="Remarks (optional, prints below the totals)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Remarks (optional) — any important message to add" />
+          </div>
+
+          <div className="pe-fixed" title="From Settings → Letterhead & bank details">
+            <SignatureBlock />
+            <EstimateFooter />
+          </div>
         </div>
 
-        <div className="span2 grid-3">
-          <Field label="Client details *">
-            <select required value={est.clientId} onChange={(e) => pickClient(e.target.value)}>
-              <option value="" disabled>Select…</option>
-              {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        {/* Details that don't print, or that set how the sheet is worked out. */}
+        <aside className="card estimate-side">
+          <Field label="Title (for your lists) *"><input required value={est.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. HLL Parivarthan folder" /></Field>
+          <Field label="Type">
+            <select value={estimateType(est)} onChange={(e) => set({ type: e.target.value as EstimateType })}>
+              {ESTIMATE_TYPES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
           </Field>
-          <Field label="GSTIN"><input readOnly value={client?.taxId ?? ""} placeholder="From client" /></Field>
-          <Field label="Estimate No. *"><input readOnly value={est.number} placeholder="Save to get No." /></Field>
-
-          <Field label="Address"><textarea rows={3} value={est.clientAddress ?? ""} onChange={(e) => set({ clientAddress: e.target.value })} placeholder="Billing address" /></Field>
-          <div className="stack">
-            <Field label="PAN"><input readOnly value={client?.pan ?? ""} placeholder="From client" /></Field>
-            <Field label="Country *">
-              <select required value={est.country ?? ""} onChange={(e) => pickCountry(e.target.value as CountryCode)}>
-                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label} ({c.currency})</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="stack">
-            <Field label="Job No.">
-              <select value={est.projectId} onChange={(e) => pickJob(e.target.value)} disabled={!est.clientId}>
-                <option value="">{est.clientId ? "Select…" : "Choose a client first"}</option>
-                {jobs.map((p) => <option key={p.id} value={p.id}>{p.number ? `${p.number} · ` : ""}{p.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Type">
-              <select value={estimateType(est)} onChange={(e) => set({ type: e.target.value as EstimateType })}>
-                {ESTIMATE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </Field>
-          </div>
-        </div>
-
-        <Field label="Title *" span={2}><input required value={est.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="Enter the job title" /></Field>
-        <Field label="Job type">
-          <input list="job-types" value={est.jobType ?? ""} onChange={(e) => set({ jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
-          <datalist id="job-types">{jobTypes.map((t) => <option key={t} value={t} />)}</datalist>
-        </Field>
-        <Field label="Product (printed)"><input value={est.productLabel ?? ""} onChange={(e) => set({ productLabel: e.target.value })} placeholder="From the job's product" /></Field>
-        <div className="field span2">
-          <span>Header</span>
-          <RichTextEditor label="Header" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Enter the job header" />
-        </div>
-
-        <ItemsEditor items={est.items} onChange={(items) => set({ items })} settings={fmt} />
-
-        <div className="field">
-          <span>Remarks</span>
-          <RichTextEditor label="Remarks" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Any important message to add" />
-          <div className="grid-2-tight">
-            <Field label="Valid until"><input required type="date" value={est.validUntil} onChange={(e) => set({ validUntil: e.target.value })} /></Field>
-            <Field label="Status">
-              <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; set({ status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
-                <option value="draft">Draft</option>
-                <option value="sent">Sent – awaiting approval</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </Field>
-          </div>
-        </div>
-
-        <div className="estimate-totals">
-          <Field label="Total"><input readOnly className="num" value={money(subtotal, fmt)} /></Field>
-          <div className="field">
-            <span>Discount</span>
-            <div className="grid-2-tight">
-              <Field label="Percentage">
-                <input type="number" min={0} max={100} step="0.01" value={est.discountPct || ""} placeholder="0"
-                  onChange={(e) => set({ discountPct: Number(e.target.value) || 0, ...(Number(e.target.value) ? {} : { discount: 0 }) })} />
-              </Field>
-              <Field label={`Value (${fmt.currency})`}>
-                <input type="number" min={0} step="0.01" value={est.discount || ""} placeholder="0.00"
-                  onChange={(e) => setEst({ ...est, discount: Number(e.target.value) || 0, discountPct: 0 })} />
-              </Field>
-            </div>
-          </div>
-          <Field label="Estimated revenue"><input readOnly className="num" value={money(invoiceTotals(est).net, fmt)} /></Field>
-          <div className="grid-2-tight">
-            <Field label="Tax rate (%)"><input type="number" min={0} step="0.01" value={est.taxRate} onChange={(e) => set({ taxRate: Number(e.target.value) })} /></Field>
-            <Field label="Tax"><input readOnly className="num" value={money(invoiceTotals(est).tax, fmt)} /></Field>
-          </div>
-          <Field label="Round off">
-            <div className="row gap">
-              <input readOnly className="num" value={money(invoiceTotals(est).roundOff, fmt)} />
-              <label className="check small"><input type="checkbox" checked={!!est.roundOff} onChange={(e) => set({ roundOff: e.target.checked })} /> Round</label>
-            </div>
+          <Field label="Status">
+            <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; set({ status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent – awaiting approval</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </Field>
-          <Field label="Grand total"><input readOnly className="num grand-input" value={money(invoiceTotals(est).total, fmt)} /></Field>
-        </div>
-
-        <div className="form-actions span2 start">
-          <button className="btn primary">Save estimate</button>
-          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-        </div>
+          <Field label="Country / currency">
+            <select required value={est.country ?? ""} onChange={(e) => pickCountry(e.target.value as CountryCode)}>
+              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label} ({c.currency})</option>)}
+            </select>
+          </Field>
+          <Field label="GST rate (%)"><input type="number" min={0} step="0.01" value={est.taxRate} onChange={(e) => set({ taxRate: Number(e.target.value) })} /></Field>
+          <Field label="Valid until"><input required type="date" value={est.validUntil} onChange={(e) => set({ validUntil: e.target.value })} /></Field>
+          <p className="muted small">
+            {split === "cgst" ? "Same state as you: GST is split into SGST + CGST." : split === "igst" ? "Client is in another state: IGST applies." : "No GST on this estimate."}
+          </p>
+          <div className="estimate-side-actions">
+            <button className="btn primary">Save estimate</button>
+            <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+          </div>
+        </aside>
       </form>
     </div>
   );

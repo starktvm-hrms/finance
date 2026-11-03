@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -60,4 +60,30 @@ export function Stat({ label, value, hint, tone }: { label: string; value: strin
 
 export function confirmDelete(what: string) {
   return window.confirm(`Delete ${what}? This cannot be undone.`);
+}
+
+/** Textarea that grows to fit its text (wrapped lines included). */
+export function AutoTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [props.value]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // Re-fit when the column width changes (window resize, sidebar, phone rotation).
+    let w = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === w) return;
+      w = el.clientWidth;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight + 2}px`;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return <textarea ref={ref} rows={2} {...props} style={{ overflow: "hidden", resize: "none", ...props.style }} />;
 }

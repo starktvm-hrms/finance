@@ -299,6 +299,56 @@ input.num { text-align: right; }
   .pe-doc { padding: 0; max-width: none; border-radius: 0; box-shadow: none !important; }
 }
 
+/* Estimate form laid out as the printed estimate */
+.estimate-editor { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; align-items: start; }
+.pe-edit {
+  /* the sheet is always paper-white: give everything inside light-mode tokens */
+  --surface: #fff; --text: #111; --muted: #666; --border: #cfd4dc; --hover: #f3f4f6; --primary: #2f5bea;
+  color-scheme: light; max-width: none; margin: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px #e5e7eb;
+}
+.pe-edit input:not([type=checkbox]), .pe-edit select, .pe-edit textarea {
+  background: #fff; color: #111; border: 1px dashed #c3c9d3; border-radius: 4px; padding: 4px 6px; font: inherit; width: 100%;
+}
+.pe-edit input:hover, .pe-edit select:hover, .pe-edit textarea:hover { border-style: solid; }
+.pe-edit input:focus, .pe-edit select:focus, .pe-edit textarea:focus { outline: 2px solid var(--primary); outline-offset: 0; border-style: solid; }
+.pe-edit .pe-meta dl { row-gap: 6px; align-items: center; }
+.pe-edit .pe-meta-left { grid-template-columns: 78px minmax(0, 1fr) 50px minmax(0, 1fr); column-gap: 6px; }
+.pe-edit .pe-meta-right { align-items: start; }
+.pe-to { display: flex; flex-direction: column; gap: 4px; }
+.pe-to select { font-weight: 700; }
+.pe-to textarea { font-weight: 700; resize: vertical; }
+.pe-auto { display: inline-block; padding: 4px 0; color: #333; }
+.pe-fixed { opacity: 0.55; pointer-events: none; user-select: none; }
+.pe-rich-edit { margin: 10px 0 4px; }
+.pe-rich-edit .rte .ql-editor, .pe-rich-edit .rte .ql-container { min-height: 54px; }
+.pe-table-edit td { padding-bottom: 10px; }
+.pe-table-edit tr:last-child td { padding-bottom: 14px; }
+.pe-table-edit textarea { resize: vertical; line-height: 1.4; }
+.pe-table-edit .pe-amt { width: 130px; }
+.pe-x { width: 28px; padding-left: 0 !important; padding-right: 0 !important; }
+.pe-qty-edit { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 10.5px; color: #666; }
+.pe-qty-edit input { width: 56px !important; padding: 2px 4px !important; }
+.pe-add { margin-top: 4px; }
+.pe-edit .pe-totals dl { grid-template-columns: 1fr 110px; align-items: center; }
+.pe-inline { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.pe-inline input { width: 52px !important; padding: 2px 4px !important; }
+.pe-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.pe-check input { margin: 0; }
+.pe-edit .pe-totals dd input { text-align: right; }
+.estimate-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.estimate-side-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 1100px) {
+  .estimate-editor { grid-template-columns: minmax(0, 1fr); }
+  .estimate-side { position: static; order: -1; }
+}
+@media (max-width: 760px) {
+  .pe-edit { padding: 14px; }
+  .pe-edit .pe-meta-left { grid-template-columns: 70px minmax(0, 1fr); }
+  .pe-edit .pe-meta-left .span3 { grid-column: auto; }
+  .pe-table-edit .pe-sl { width: 28px; }
+  .pe-table-edit .pe-amt { width: 96px; }
+}
+
 /* Invoice document */
 .invoice-doc { display: flex; flex-direction: column; gap: 20px; padding: 8px 4px 16px; }
 .doc-agency { font-size: 18px; font-weight: 650; }
