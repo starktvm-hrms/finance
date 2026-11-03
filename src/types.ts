@@ -19,6 +19,7 @@ export interface Settings {
   departmentHeads: string[]; // people who can approve new jobs
   logo: string; // uploaded data-URL logo ("" = the logo shipped with the app)
   logoIncludesName?: boolean; // uploaded logo already shows the agency name (default true)
+  letterheadFilled?: boolean; // the agency's letterhead details were filled in once (see seed.ts)
   // Letterhead (printed on estimates)
   agencyPhone: string;
   agencyFax: string;

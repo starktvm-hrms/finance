@@ -38,6 +38,36 @@ export const defaultSettings: Settings = {
   paymentTermsDays: 15,
 };
 
+/**
+ * The agency's letterhead as printed on its estimates (public business details;
+ * bank details are deliberately not included). Filled in once into any blank
+ * Settings fields; after that Settings is the only source.
+ */
+export const AGENCY_LETTERHEAD: Partial<Settings> = {
+  agencyName: "Stark Communications Pvt Ltd",
+  agencyAddress: "E2, 9/566, Jawahar Nagar, Kowdiar, Thiruvananthapuram, Kerala -",
+  agencyPhone: "+91-471-4082 707",
+  agencyFax: "408 2708",
+  agencyEmail: "finance@stark.in",
+  agencyPan: "AADCS2077D",
+  taxId: "32AADCS2077D1ZR",
+  stateCode: "32",
+  agencyCin: "U74300KL1987PTC004881",
+  agencyWebsite: "www.stark.in",
+};
+
+/** Blank (or still-default) letterhead fields to fill, or null when already done. */
+export function letterheadPatch(s: Settings): Partial<Settings> | null {
+  if (s.letterheadFilled) return null;
+  const placeholders: Partial<Record<keyof Settings, string>> = { agencyName: defaultSettings.agencyName, agencyEmail: defaultSettings.agencyEmail };
+  const patch: Partial<Settings> = { letterheadFilled: true };
+  for (const [k, v] of Object.entries(AGENCY_LETTERHEAD) as [keyof Settings, string][]) {
+    const cur = String(s[k] ?? "").trim();
+    if (!cur || cur === placeholders[k]) (patch as Record<string, unknown>)[k] = v;
+  }
+  return patch;
+}
+
 export function emptyData(): AppData {
   return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], projects: [], estimates: [], invoices: [], expenses: [] };
 }

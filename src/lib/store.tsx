@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { AppData, Client, Estimate, Expense, Invoice, Project, Settings, Vendor } from "../types";
 import { SignedOutError, getAdapter, readBrowserData } from "./adapter";
 import { applyOp, type Collection, type Op } from "./ops";
-import { emptyData, sampleData } from "./seed";
+import { emptyData, letterheadPatch, sampleData } from "./seed";
 
 type ItemOf<C extends Collection> = C extends "clients"
   ? Client
@@ -150,7 +150,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         loaded.current = true;
         if (snap?.data) {
           rev.current = snap.rev;
-          setData(normalize(snap.data));
+          const d = normalize(snap.data);
+          setData(d);
+          // One-time: put the agency's letterhead into blank Settings fields.
+          const patch = letterheadPatch(d.settings);
+          if (patch) {
+            setData((x) => applyOp(x, { op: "settings", patch }));
+            queue.current.push({ op: "settings", patch });
+            await flush();
+          }
         } else {
           // Nothing stored yet. On the server, start from whatever this browser
           // had (so earlier work isn't lost); otherwise an empty book.
