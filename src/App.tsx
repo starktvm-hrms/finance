@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Directory from "./pages/Directory";
+import Login from "./pages/Login";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
@@ -20,7 +21,7 @@ const PAGES: { id: PageId; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const { ready, error, data, storageName, sync } = useStore();
+  const { ready, error, data, storageName, sync, auth, user, signOut } = useStore();
   const { page, params } = useRoute();
   const [navOpen, setNavOpen] = useState(false);
   const nav = (id: PageId, params?: Record<string, string>) => {
@@ -31,6 +32,9 @@ export default function App() {
   const inDirectory = page === "clients" || page === "vendors";
   const isActive = (id: PageId) => id === page || (id === "vendors" && inDirectory);
   const pageLabel = inDirectory ? "Clients & Vendors" : PAGES.find((p) => p.id === page)?.label;
+
+  if (auth === "checking") return <div className="splash">Loading…</div>;
+  if (auth === "signed-out") return <Login />;
 
   return (
     <div className="shell">
@@ -54,6 +58,12 @@ export default function App() {
           <span className={`sync-dot ${sync}`} />
           {sync === "saving" ? "Saving…" : sync === "error" ? "Not saved – retrying" : sync === "loading" ? "Loading…" : `Saved · ${storageName}`}
         </div>
+        {auth === "signed-in" && (
+          <div className="sidebar-user">
+            <span className="who" title={`Signed in as ${user}`}>{user}</span>
+            <button className="btn ghost" onClick={signOut}>Sign out</button>
+          </div>
+        )}
       </aside>
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <main className="main">

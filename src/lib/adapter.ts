@@ -15,6 +15,28 @@ export interface DataAdapter {
   shared: boolean; // true when other people/devices see the same data
   load(sinceRev?: number): Promise<Snapshot | null>;
   apply(ops: Op[]): Promise<number>; // returns the new revision
+  auth?: AuthApi; // present when the data lives behind a sign-in
+}
+
+/** Thrown when the server says the session is missing or expired. */
+export class SignedOutError extends Error {
+  constructor(message = "Please sign in.") {
+    super(message);
+    this.name = "SignedOutError";
+  }
+}
+
+export interface Me {
+  user: string | null; // null in "legacy" mode (server's own login in front)
+  mode: "on" | "legacy" | "locked";
+}
+
+export interface AuthApi {
+  me(): Promise<Me>; // throws SignedOutError when signed out
+  login(username: string, password: string, remember: boolean): Promise<Me>;
+  logout(): Promise<void>;
+  changePassword(current: string, next: string): Promise<void>;
+  branding(): Promise<{ agencyName: string; logo: string }>;
 }
 
 const KEY = "agency-finance:data:v1";
@@ -52,7 +74,18 @@ export const localAdapter: DataAdapter = {
 export function serverAdapter(base: string): DataAdapter {
   const url = base.replace(/\/$/, "");
   const check = async (res: Response) => {
-    if (res.status === 401) throw new Error("Not signed in. Reload the page and log in again.");
+    if (res.status === 401) {
+      let msg = "Please sign in.";
+      try {
+        msg = (await res.json()).error ?? msg;
+      } catch {
+        /* not JSON */
+      }
+      throw new SignedOutError(msg);
+    }
+    if (res.status === 429 || res.status === 400) {
+      throw new Error((await res.json().catch(() => ({}))).error ?? `Error ${res.status}`);
+    }
     if (!res.ok) {
       let msg = `${res.status}`;
       try {
@@ -82,6 +115,26 @@ export function serverAdapter(base: string): DataAdapter {
         }),
       );
       return body.rev as number;
+    },
+    auth: {
+      async me() {
+        return (await check(await fetch(`${url}/me`, { cache: "no-store", credentials: "same-origin" }))) as Me;
+      },
+      async login(username, password, remember) {
+        const r = await fetch(`${url}/login`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password, remember }) });
+        if (r.status === 401) throw new Error((await r.json().catch(() => ({}))).error ?? "Wrong username or password.");
+        const body = await check(r);
+        return { user: body.user, mode: body.mode ?? "on" } as Me;
+      },
+      async logout() {
+        await fetch(`${url}/logout`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+      },
+      async changePassword(current, next) {
+        await check(await fetch(`${url}/password`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current, new: next }) }));
+      },
+      async branding() {
+        return check(await fetch(`${url}/branding`, { cache: "no-store", credentials: "same-origin" }));
+      },
     },
   };
 }

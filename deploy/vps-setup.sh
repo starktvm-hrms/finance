@@ -9,12 +9,17 @@
 # What it ADDS (nothing existing is edited or removed):
 #   /var/www/finance.starkpeople.in/              the built app (a checkout of the `deploy` branch)
 #   nginx site file for finance.starkpeople.in    sites-available + symlink, or conf.d
-#   /etc/nginx/finance.starkpeople.in.htpasswd    login for the app (HTTP basic auth)
 #   /etc/cron.d/finance-starkpeople               pulls new builds every 5 minutes
 #   /etc/systemd/system/agency-finance.service    storage API (python3, 127.0.0.1 only)
-#   /var/lib/agency-finance/                      the data + 30 days of daily backups
+#   /var/lib/agency-finance/                      the data, 30 days of daily backups, and the
+#                                                 app's sign-in users (users.json)
 #   system user `agency-finance`                  runs the API with no other access
 #   a Let's Encrypt certificate for this subdomain only (if certbot is installed)
+#
+# Sign-in happens on the app's own login page (checked by the API). Installs
+# that used the older browser pop-up login (nginx basic auth) are upgraded:
+# that username/password is imported, and basic auth is removed from this
+# site's nginx file only.
 #
 # Safe to re-run: it only rewrites its own files. If nginx rejects the new
 # config, the new site file is removed again and nginx is left untouched.
@@ -67,8 +72,27 @@ else
 fi
 [ -f "${WEBROOT}/index.html" ] || fail "build output not found in ${WEBROOT}."
 
-# 2. Login (financial data should not be public)
-if [ ! -s "$HTPASSWD" ]; then
+# 3. Storage API (runs as its own unprivileged user, listens on localhost only)
+[ -f "${WEBROOT}/_api/api.py" ] || fail "storage API missing from the build (${WEBROOT}/_api/api.py)."
+if ss -ltnH "sport = :${API_PORT}" 2>/dev/null | grep -q . && ! systemctl is-active -q "$SERVICE"; then
+  fail "port ${API_PORT} is already used by another program. Re-run with FINANCE_PORT=<free port>."
+fi
+id -u "$SERVICE" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SERVICE"
+install -d -m 750 -o "$SERVICE" -g "$SERVICE" "$DATA_DIR"
+
+# 2. Sign-in users (financial data should not be public)
+api_cli() { runuser -u "$SERVICE" -- env FINANCE_DATA_DIR="$DATA_DIR" python3 "${WEBROOT}/_api/api.py" "$@"; }
+if [ -s "${DATA_DIR}/users.json" ]; then
+  say "Keeping existing sign-in users: $(api_cli list-users | paste -sd ' ')"
+elif [ -s "$HTPASSWD" ]; then
+  # Same username/password as the old browser pop-up login.
+  TMP_HT=$(mktemp)
+  cp "$HTPASSWD" "$TMP_HT"
+  chown "$SERVICE" "$TMP_HT"
+  chmod 600 "$TMP_HT"
+  say "Importing the existing login: $(api_cli import-htpasswd "$TMP_HT")"
+  rm -f "$TMP_HT"
+else
   # Credentials can come from FINANCE_USER / FINANCE_PASS, or are asked for.
   # Some web terminals (e.g. hPanel's) have no usable /dev/tty when the script
   # is piped from curl, so fall back to stdin when it is a terminal.
@@ -78,12 +102,11 @@ if [ ! -s "$HTPASSWD" ]; then
     if [ -t 0 ]; then TTY=/dev/stdin
     elif ( : </dev/tty ) 2>/dev/null && [ -t 1 ]; then TTY=/dev/tty
     else
-      fail "no terminal to ask for a login. Either download and run the script:
-    curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh
-  or create ${HTPASSWD} first and re-run (see the README)."
+      fail "no terminal to ask for a login. Download and run the script instead:
+    curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh"
     fi
-    say "Create a login for ${DOMAIN}"
-    read -rp "  Username: " AUTH_USER <"$TTY" || fail "could not read input; see the README for the manual login step."
+    say "Create the first sign-in for ${DOMAIN}"
+    read -rp "  Username: " AUTH_USER <"$TTY" || fail "could not read input."
     while :; do
       read -rsp "  Password (min 10 chars): " AUTH_PASS <"$TTY" || fail "could not read input."
       echo
@@ -92,22 +115,13 @@ if [ ! -s "$HTPASSWD" ]; then
     done
   fi
   [ -n "$AUTH_USER" ] || fail "username must not be empty."
-  printf '%s:%s\n' "$AUTH_USER" "$(openssl passwd -apr1 "$AUTH_PASS")" > "$HTPASSWD"
+  FINANCE_PASSWORD="$AUTH_PASS" api_cli add-user "$AUTH_USER" >/dev/null || fail "could not create the user."
   unset AUTH_PASS
-  chmod 640 "$HTPASSWD"
-  NGINX_USER=$(awk '$1=="user"{gsub(";","",$2); print $2; exit}' /etc/nginx/nginx.conf)
-  chown root:"${NGINX_USER:-www-data}" "$HTPASSWD" 2>/dev/null || chmod 644 "$HTPASSWD"
-else
-  say "Keeping existing login file ${HTPASSWD}"
+  say "Created sign-in user ${AUTH_USER}"
 fi
-
-# 3. Storage API (runs as its own unprivileged user, listens on localhost only)
-[ -f "${WEBROOT}/_api/api.py" ] || fail "storage API missing from the build (${WEBROOT}/_api/api.py)."
-if ss -ltnH "sport = :${API_PORT}" 2>/dev/null | grep -q . && ! systemctl is-active -q "$SERVICE"; then
-  fail "port ${API_PORT} is already used by another program. Re-run with FINANCE_PORT=<free port>."
-fi
-id -u "$SERVICE" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SERVICE"
-install -d -m 750 -o "$SERVICE" -g "$SERVICE" "$DATA_DIR"
+[ -s "${DATA_DIR}/users.json" ] || fail "no sign-in users were created; nothing else was changed."
+# From now on the API refuses everything if the users file ever goes missing.
+touch "${DATA_DIR}/auth-required"
 say "Writing ${SERVICE_FILE}"
 cat > "$SERVICE_FILE" <<UNIT
 # Agency Finance storage API, added by deploy/vps-setup.sh
@@ -159,17 +173,13 @@ server {
     root ${WEBROOT};
     index index.html;
 
-    auth_basic "Agency Finance";
-    auth_basic_user_file ${HTPASSWD};
-
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "same-origin" always;
     add_header X-Robots-Tag "noindex, nofollow" always;
 
-    # Let's Encrypt validation must bypass the login
+    # Let's Encrypt validation
     location ^~ /.well-known/acme-challenge/ {
-        auth_basic off;
         try_files \$uri =404;
     }
 
@@ -206,6 +216,8 @@ block = f"""    # finance-api: storage API (server/api.py), behind the same logi
     location /api/ {{
         proxy_pass http://127.0.0.1:{port}/;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size 10m;
         proxy_read_timeout 30s;
     }}
@@ -218,6 +230,17 @@ if anchor not in src:
 open(path, "w").write(src.replace(anchor, block + anchor))
 PY
   say "Added /api/ route to ${SITE_FILE}"
+fi
+
+# 5b. Upgrade older installs of OUR site file: sign-in moved into the app, so
+#     drop the browser pop-up login, and pass client IP + scheme to the API.
+if grep -q 'auth_basic "Agency Finance"' "$SITE_FILE" || ! grep -q "X-Real-IP" "$SITE_FILE"; then
+  [ -n "$SITE_BACKUP" ] || { SITE_BACKUP=$(mktemp); cp "$SITE_FILE" "$SITE_BACKUP"; }
+  sed -i -E '/^\s*auth_basic "Agency Finance";\s*$/d; \#^\s*auth_basic_user_file '"${HTPASSWD//\//\\/}"';\s*$#d' "$SITE_FILE"
+  if ! grep -q "X-Real-IP" "$SITE_FILE"; then
+    sed -i -E 's#^(\s*)proxy_set_header Host \$host;#&\n\1proxy_set_header X-Real-IP $remote_addr;\n\1proxy_set_header X-Forwarded-Proto $scheme;#' "$SITE_FILE"
+  fi
+  say "Switched ${SITE_FILE} to the app's own sign-in page"
 fi
 
 if ! nginx -t 2>/tmp/finance-nginx-test.log; then

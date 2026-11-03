@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AppData, Client, Estimate, Expense, Invoice, Project, Settings, Vendor } from "../types";
-import { getAdapter, readBrowserData } from "./adapter";
+import { SignedOutError, getAdapter, readBrowserData } from "./adapter";
 import { applyOp, type Collection, type Op } from "./ops";
 import { emptyData, sampleData } from "./seed";
 
@@ -17,6 +17,8 @@ type ItemOf<C extends Collection> = C extends "clients"
         : Expense;
 
 export type SyncState = "loading" | "saved" | "saving" | "error";
+/** "off" = no sign-in (browser storage, or a server still behind its own login). */
+export type AuthState = "checking" | "signed-in" | "signed-out" | "off";
 
 interface Store {
   data: AppData;
@@ -25,6 +27,11 @@ interface Store {
   sync: SyncState;
   storageName: string;
   shared: boolean;
+  auth: AuthState;
+  user: string | null;
+  signIn(username: string, password: string, remember: boolean): Promise<void>;
+  signOut(): Promise<void>;
+  changePassword(current: string, next: string): Promise<void>;
   upsert<C extends Collection>(col: C, item: ItemOf<C>): void;
   remove(col: Collection, id: string): void;
   updateSettings(patch: Partial<Settings>): void;
@@ -47,6 +54,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [sync, setSync] = useState<SyncState>("loading");
+  const [auth, setAuth] = useState<AuthState>(adapter.auth ? "checking" : "off");
+  const [user, setUser] = useState<string | null>(null);
+  const loaded = useRef(false);
 
   const rev = useRef(0);
   const queue = useRef<Op[]>([]);
@@ -79,6 +89,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setError("");
     } catch (e) {
       queue.current.unshift(...ops); // keep them and retry
+      if (e instanceof SignedOutError) {
+        inflight.current = false;
+        setAuth("signed-out"); // saved again right after signing back in
+        return;
+      }
       setError((e as Error).message || String(e));
       setSync("error");
       inflight.current = false;
@@ -101,11 +116,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [schedule],
   );
 
-  // Initial load (+ one-time move of browser data to the server).
+  // Who is signed in? (Only when the data is behind a sign-in.)
   useEffect(() => {
+    if (!adapter.auth) return;
+    adapter.auth
+      .me()
+      .then((me) => {
+        setUser(me.user);
+        setAuth(me.mode === "legacy" ? "off" : "signed-in");
+      })
+      .catch((e) => {
+        if (e instanceof SignedOutError) setAuth("signed-out");
+        else {
+          setError((e as Error).message || String(e));
+          setSync("error");
+          setReady(true);
+        }
+      });
+  }, []);
+
+  // Load the data once signed in (+ one-time move of browser data to the server).
+  const canLoad = auth === "signed-in" || auth === "off";
+  useEffect(() => {
+    if (!canLoad) return;
+    if (loaded.current) {
+      // Signed back in after a session expired: send what was waiting.
+      if (queue.current.length) schedule(0);
+      return;
+    }
     (async () => {
       try {
         const snap = await adapter.load();
+        loaded.current = true;
         if (snap?.data) {
           rev.current = snap.rev;
           setData(normalize(snap.data));
@@ -120,27 +162,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         setSync("saved");
       } catch (e) {
+        if (e instanceof SignedOutError) return setAuth("signed-out");
         setError((e as Error).message || String(e));
         setSync("error");
       } finally {
         setReady(true);
       }
     })();
-  }, [flush]);
+  }, [canLoad, flush, schedule]);
 
   // Pick up changes made by other people / devices.
   useEffect(() => {
     if (!adapter.shared) return;
     const poll = async () => {
       if (inflight.current || queue.current.length) return;
+      if (!loaded.current) return;
       try {
         const snap = await adapter.load(rev.current);
         if (snap?.data && !queue.current.length && !inflight.current) {
           rev.current = snap.rev;
           setData(normalize(snap.data));
         }
-      } catch {
-        /* shown on next save */
+      } catch (e) {
+        if (e instanceof SignedOutError) setAuth("signed-out");
+        /* other errors are shown on the next save */
       }
     };
     pollRef.current = poll;
@@ -172,8 +217,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const updateSettings = useCallback((patch: Partial<Settings>) => push({ op: "settings", patch }), [push]);
   const replaceAll = useCallback((next: AppData) => push({ op: "replace", data: next }), [push]);
 
+  const signIn = useCallback(async (username: string, password: string, remember: boolean) => {
+    const me = await adapter.auth!.login(username, password, remember);
+    setUser(me.user);
+    setError("");
+    setAuth(me.mode === "legacy" ? "off" : "signed-in");
+  }, []);
+
+  const signOut = useCallback(async () => {
+    if (queue.current.length && !window.confirm("Some changes have not been saved yet. Sign out anyway?")) return;
+    await adapter.auth?.logout().catch(() => undefined);
+    // Forget the data in this tab (shared computers).
+    queue.current = [];
+    loaded.current = false;
+    rev.current = 0;
+    setData(emptyData());
+    setReady(false);
+    setUser(null);
+    setAuth("signed-out");
+  }, []);
+
+  const changePassword = useCallback(async (current: string, next: string) => {
+    await adapter.auth!.changePassword(current, next);
+  }, []);
+
   return (
-    <Ctx.Provider value={{ data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, upsert, remove, updateSettings, replaceAll }}>
+    <Ctx.Provider value={{ data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
       {children}
     </Ctx.Provider>
   );

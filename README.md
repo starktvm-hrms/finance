@@ -41,6 +41,35 @@ npm run preview    # serve the production build
 The first launch loads sample data so you can explore. Go to **Settings → Clear all data**
 to start fresh, and fill in your agency details.
 
+## Signing in
+
+The live site opens on a sign-in page. Usernames and passwords are checked by the
+storage API (`server/api.py`), not by nginx:
+
+- Passwords are stored as PBKDF2-SHA256 hashes in `/var/lib/agency-finance/users.json`.
+- A session is a random token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie
+  (12 hours, or 30 days with "Keep me signed in"); only its hash is stored on the server.
+- 5 wrong passwords from one address, or for one username, lock sign-in for 15 minutes.
+- Each person can change their password in **Settings**; that signs out their other devices.
+
+Add, reset or remove people on the server:
+
+```bash
+sudo -u agency-finance python3 /var/www/finance.starkpeople.in/_api/api.py add-user NAME
+```
+
+```bash
+sudo -u agency-finance python3 /var/www/finance.starkpeople.in/_api/api.py passwd NAME
+```
+
+```bash
+sudo -u agency-finance python3 /var/www/finance.starkpeople.in/_api/api.py del-user NAME
+```
+
+Installs set up before the sign-in page existed keep working behind nginx's pop-up login
+until `deploy/vps-setup.sh` is run again; it imports that username and password and
+switches the site to the sign-in page.
+
 ## Data storage
 
 - **Live site (finance.starkpeople.in):** data is stored **on the server** in
@@ -119,10 +148,10 @@ The app runs on the existing nginx VPS next to the other starkpeople.in sites.
    read -rp "Username: " U; read -rsp "Password: " P; echo; printf '%s:%s\n' "$U" "$(openssl passwd -apr1 "$P")" > /etc/nginx/finance.starkpeople.in.htpasswd; unset P
    ```
 
-   It only adds things for this subdomain (web root, nginx site file, login file, cron
-   entry, SSL certificate, the `agency-finance` storage service and its data folder);
-   existing sites and configs are not edited. It asks for a username and password that
-   protect the app. Re-running it is safe and is how server-side changes are applied.
+   It only adds things for this subdomain (web root, nginx site file, cron entry, SSL
+   certificate, the `agency-finance` storage service, its data folder and sign-in users);
+   existing sites and configs are not edited. It asks for the first username and password
+   (or imports the old pop-up login). Re-running it is safe and is how server-side changes are applied.
 3. After that the server pulls new builds every 5 minutes — just push to `main`.
 
 DNS: `finance` is a CNAME to `starkpeople.in` (same as `meet`).

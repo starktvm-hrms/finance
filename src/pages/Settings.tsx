@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { AppData } from "../types";
 import { useStore } from "../lib/store";
 import { emptyData, sampleData } from "../lib/seed";
@@ -11,7 +11,20 @@ const CURRENCIES = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateSettings, replaceAll, storageName, shared } = useStore();
+  const { data, updateSettings, replaceAll, storageName, shared, auth, user, changePassword } = useStore();
+  const [pw, setPw] = useState({ current: "", next: "", repeat: "" });
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const submitPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    if (pw.next !== pw.repeat) return setPwMsg({ ok: false, text: "The new passwords do not match." });
+    try {
+      await changePassword(pw.current, pw.next);
+      setPw({ current: "", next: "", repeat: "" });
+      setPwMsg({ ok: true, text: "Password changed. Other devices have been signed out." });
+    } catch (err) {
+      setPwMsg({ ok: false, text: (err as Error).message });
+    }
+  };
   const s = data.settings;
   const file = useRef<HTMLInputElement>(null);
   const logoInput = useRef<HTMLInputElement>(null);
@@ -98,6 +111,23 @@ export default function SettingsPage() {
           </Field>
         </div>
       </div>
+
+      {auth === "signed-in" && (
+        <div className="card">
+          <h3>Your password</h3>
+          <p className="muted">Signed in as <strong>{user}</strong>. Changing it signs you out on other devices.</p>
+          <form className="form" onSubmit={submitPassword}>
+            <input type="text" name="username" autoComplete="username" value={user ?? ""} readOnly hidden />
+            <Field label="Current password"><input type="password" autoComplete="current-password" required value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></Field>
+            <div />
+            <Field label="New password (min 10 characters)"><input type="password" autoComplete="new-password" required minLength={10} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} /></Field>
+            <Field label="Repeat new password"><input type="password" autoComplete="new-password" required minLength={10} value={pw.repeat} onChange={(e) => setPw({ ...pw, repeat: e.target.value })} /></Field>
+            {pwMsg && <p className={`span2 small ${pwMsg.ok ? "good" : "bad"}`} role="status">{pwMsg.text}</p>}
+            <div className="form-actions span2 start"><button className="btn primary">Change password</button></div>
+          </form>
+          <p className="muted small">To add or remove people, run on the server: <code>sudo -u agency-finance python3 /var/www/finance.starkpeople.in/_api/api.py add-user NAME</code></p>
+        </div>
+      )}
 
       <div className="card">
         <h3>Data</h3>
