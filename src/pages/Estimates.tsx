@@ -81,7 +81,14 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   };
 
   // `#/estimates?new=<jobId>` opens a new estimate for that job (from the Jobs page).
+  // `#/estimates?new=<jobId>` opens a new estimate for that job;
+  // `#/estimates?edit=<estimateId>` opens an existing one in the form.
   const [edit, setEdit] = useState<Estimate | null>(() => {
+    const editId = params.get("edit");
+    if (editId) {
+      clearParam("edit");
+      return data.estimates.find((e) => e.id === editId) ?? null;
+    }
     if (!params.has("new")) return null;
     const jobId = params.get("new") ?? "";
     clearParam("new");
@@ -105,6 +112,20 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   }, [typeTab]);
 
   const isNew = (e: Estimate) => !data.estimates.some((x) => x.id === e.id);
+
+  /** Open a saved estimate in the form (always the latest saved version). */
+  const startEdit = (e: Estimate) => {
+    const current = data.estimates.find((x) => x.id === e.id) ?? e;
+    if (current.status === "invoiced") {
+      const inv = data.invoices.find((i) => i.id === current.invoiceId);
+      const ok = window.confirm(
+        `${current.number} has already been invoiced${inv ? ` (${inv.number})` : ""}. Changes to the estimate will not change the invoice. Edit anyway?`,
+      );
+      if (!ok) return;
+    }
+    setView(null);
+    setEdit(current);
+  };
   const rows = useMemo(
     () =>
       data.estimates
@@ -231,7 +252,10 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
                     <td className={`nowrap ${st === "expired" ? "warn" : ""}`}>{fmtDate(e.validUntil, s.locale)}</td>
                     <td><Badge tone={ESTIMATE_STATUS[st].tone}>{ESTIMATE_STATUS[st].label}</Badge></td>
                     <td className="num">{money(invoiceTotals(e).total, docFormat(e.country, s))}</td>
-                    <td className="actions" onClick={(ev) => ev.stopPropagation()}>{actions(e)}</td>
+                    <td className="actions" onClick={(ev) => ev.stopPropagation()}>
+                      {actions(e)}
+                      <button className="btn ghost" onClick={() => startEdit(e)} aria-label={`Edit ${e.number}`}>Edit</button>
+                    </td>
                   </tr>
                 );
               })}
@@ -261,7 +285,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
             {view.status === "invoiced" && view.invoiceId && (
               <button className="btn" onClick={() => go("invoices", { open: view.invoiceId })}>View invoice</button>
             )}
-            {view.status !== "invoiced" && <button className="btn" onClick={() => { setEdit(view); setView(null); }}>Edit</button>}
+            <button className="btn" onClick={() => startEdit(view)}>Edit</button>
             <button className="btn" onClick={() => window.print()}>Print / Save PDF</button>
             {(view.status === "draft" || view.status === "sent" || view.status === "approved") && (
               <span onClick={() => setView(null)} className="row gap">{actions(view)}</span>
@@ -312,11 +336,17 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
   const pickCountry = (code: CountryCode) =>
     set({ country: code, taxRate: code === "IN" ? (est.country === "IN" ? est.taxRate : s.defaultTaxRate) : 0 });
 
+  const dirty = JSON.stringify(est) !== JSON.stringify(initial);
+  const leave = () => {
+    if (dirty && !window.confirm(isNew ? "Discard this new estimate?" : "Discard your changes to this estimate?")) return;
+    onCancel();
+  };
+
   return (
     <div className="page">
       <div className="page-head">
         <h1 className="back-title">
-          <button type="button" className="icon-btn back-btn" onClick={onCancel} aria-label="Back to estimates">‹</button>
+          <button type="button" className="icon-btn back-btn" onClick={leave} aria-label="Back to estimates">‹</button>
           {isNew ? `Add ${type.label} Estimate` : `Edit ${type.label} Estimate ${est.number}`}
         </h1>
       </div>
@@ -468,8 +498,8 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
             {split === "cgst" ? "Same state as you: GST is split into SGST + CGST." : split === "igst" ? "Client is in another state: IGST applies." : "No GST on this estimate."}
           </p>
           <div className="estimate-side-actions">
-            <button className="btn primary">Save estimate</button>
-            <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+            <button className="btn primary">{isNew ? "Save estimate" : "Save changes"}</button>
+            <button type="button" className="btn" onClick={leave}>Cancel</button>
           </div>
         </aside>
       </form>
