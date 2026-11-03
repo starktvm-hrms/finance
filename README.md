@@ -92,6 +92,25 @@ with per-user permissions, the next step is moving from one JSON document to pro
 tables (`clients`, `projects`, `invoices`, `expenses`) — the types in `src/types.ts`
 map 1:1 to those tables.
 
+## Live deployment (finance.starkpeople.in)
+
+The app runs on the existing nginx VPS next to the other starkpeople.in sites.
+
+1. Every push to `main` runs `.github/workflows/build-deploy.yml`, which builds the app
+   and publishes `dist/` to the `deploy` branch.
+2. One-time server setup — run as root in hPanel → VPS → Browser terminal:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh | sudo bash
+   ```
+
+   It only adds files for this subdomain (web root, nginx site file, login file, cron
+   entry, SSL certificate); existing sites and configs are not edited. It asks for a
+   username and password that protect the app.
+3. After that the server pulls new builds every 5 minutes — just push to `main`.
+
+DNS: `finance` is a CNAME to `starkpeople.in` (same as `meet`).
+
 ## Project structure
 
 ```
@@ -105,4 +124,5 @@ src/
   pages/              Dashboard, Invoices, Expenses, Projects, Clients, Settings
   components/ui.tsx   modal, fields, badges, stat cards
 server/index.mjs      optional reference API
+deploy/vps-setup.sh   one-time VPS setup for finance.starkpeople.in
 ```
