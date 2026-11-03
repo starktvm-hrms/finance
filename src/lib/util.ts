@@ -1,4 +1,4 @@
-import type { Invoice, Settings } from "../types";
+import { COUNTRIES, type Invoice, type Settings } from "../types";
 
 export const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -46,11 +46,20 @@ export function fmtDate(d: string, locale: string) {
   });
 }
 
-export function invoiceTotals(inv: Pick<Invoice, "items" | "taxRate" | "discount">) {
+export function invoiceTotals(inv: Pick<Invoice, "items" | "taxRate" | "discount" | "roundOff">) {
   const subtotal = inv.items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.rate) || 0), 0);
-  const discounted = Math.max(0, subtotal - (Number(inv.discount) || 0));
+  const discount = Number(inv.discount) || 0;
+  const discounted = Math.max(0, subtotal - discount); // "estimated revenue" (taxable value)
   const tax = (discounted * (Number(inv.taxRate) || 0)) / 100;
-  return { subtotal, discount: Number(inv.discount) || 0, tax, total: discounted + tax };
+  const exact = discounted + tax;
+  const total = inv.roundOff ? Math.round(exact) : exact;
+  return { subtotal, discount, net: discounted, tax, roundOff: total - exact, total };
+}
+
+/** Currency + number format for a document billed in `country` (falls back to the agency's). */
+export function docFormat(country: string | undefined, s: Pick<Settings, "currency" | "locale">) {
+  const c = COUNTRIES.find((x) => x.code === country);
+  return c ? { currency: c.currency, locale: c.locale } : { currency: s.currency, locale: s.locale };
 }
 
 export type DisplayStatus = Invoice["status"] | "overdue";

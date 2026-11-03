@@ -4,7 +4,7 @@ import { invoiceDisplayStatus, invoiceTotals, lastNMonths, monthKey, today } fro
 /** Net (pre-tax) revenue of an invoice: subtotal minus discount. */
 export const netRevenue = (inv: Invoice) => {
   const t = invoiceTotals(inv);
-  return t.total - t.tax;
+  return t.net;
 };
 
 export function computeMetrics(data: AppData, months: number) {

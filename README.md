@@ -9,8 +9,13 @@ default, and can sync to your website's backend when you're ready.
 - **Dashboard** — revenue, expenses, net profit & margin, outstanding/overdue amounts,
   monthly income-vs-expense chart, expenses by category, revenue by client.
   Period: this month / 3 / 6 / 12 months. Cash basis (revenue counted when paid, tax excluded).
+- **Jobs** — numbered (JOB-0001), with contact person, product / sub-product (remembered per
+  client), description and optional approval by a department head (set in Settings).
 - **Estimates** — one page with a tab per type (All, Creative, Production, Media, Shoot,
-  Events, Retainer, Project) and a status filter; approve and convert to an invoice.
+  Events, Retainer, Project) and a status filter; approve and convert to an invoice. The
+  estimate form is a full page: client (GSTIN, PAN, address), job no., country/currency,
+  title, rich-text header and remarks, discount by % or value, tax, round off and grand total.
+  Rich text is sanitised with DOMPurify on save and on display.
 - **Invoices** — line items, discount, tax (GST/VAT), auto-numbering, payment terms,
   draft → sent → paid workflow, automatic *overdue* detection, print / save as PDF, CSV export.
 - **Expenses** — categories, link to a project or mark as overhead, recurring flag,

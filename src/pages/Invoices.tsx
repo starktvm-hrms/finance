@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Invoice, InvoiceStatus } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam } from "../lib/route";
-import { addDays, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
+import { addDays, docFormat, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { DocumentView, ItemsEditor, Totals, newLine } from "../components/Doc";
 
@@ -130,7 +130,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                     <td className="nowrap">{fmtDate(i.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "overdue" ? "bad" : ""}`}>{fmtDate(i.dueDate, s.locale)}</td>
                     <td><Badge tone={STATUS[st].tone}>{STATUS[st].label}</Badge></td>
-                    <td className="num">{money(invoiceTotals(i).total, s)}</td>
+                    <td className="num">{money(invoiceTotals(i).total, docFormat(i.country, s))}</td>
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
                       {i.status === "draft" && <button className="btn ghost" onClick={() => setStatus(i, "sent")}>Mark sent</button>}
                       {i.status === "sent" && <button className="btn ghost good" onClick={() => setStatus(i, "paid")}>Mark paid</button>}

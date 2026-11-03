@@ -1,18 +1,24 @@
 import type { ReactNode } from "react";
 import type { LineItem, Settings } from "../types";
 import { useStore } from "../lib/store";
-import { fmtDate, invoiceTotals, money, uid } from "../lib/util";
+import { docFormat, fmtDate, invoiceTotals, money, uid } from "../lib/util";
+import { RichTextView } from "./SafeHtml";
 
 /** Shared by invoices and estimates: anything with line items, tax and a discount. */
 export interface Billable {
   items: LineItem[];
   taxRate: number;
   discount: number;
+  discountPct?: number;
+  roundOff?: boolean;
+  country?: string;
 }
+
+type Fmt = { currency: string; locale: string };
 
 export const newLine = (): LineItem => ({ id: uid(), description: "", quantity: 1, rate: 0 });
 
-export function ItemsEditor({ items, onChange, settings }: { items: LineItem[]; onChange: (items: LineItem[]) => void; settings: Settings }) {
+export function ItemsEditor({ items, onChange, settings }: { items: LineItem[]; onChange: (items: LineItem[]) => void; settings: Fmt }) {
   const set = (id: string, patch: Partial<LineItem>) => onChange(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   return (
     <div className="span2 items">
@@ -33,12 +39,19 @@ export function ItemsEditor({ items, onChange, settings }: { items: LineItem[]; 
 
 export function Totals({ doc, settings, totalLabel = "Total", className = "" }: { doc: Billable; settings: Settings; totalLabel?: string; className?: string }) {
   const t = invoiceTotals(doc);
+  const f = docFormat(doc.country, settings);
   return (
     <div className={`totals ${className}`}>
-      <div><span>Subtotal</span><span>{money(t.subtotal, settings)}</span></div>
-      {t.discount > 0 && <div><span>Discount</span><span>− {money(t.discount, settings)}</span></div>}
-      <div><span>Tax ({doc.taxRate}%)</span><span>{money(t.tax, settings)}</span></div>
-      <div className="grand"><span>{totalLabel}</span><span>{money(t.total, settings)}</span></div>
+      <div><span>Total</span><span>{money(t.subtotal, f)}</span></div>
+      {t.discount > 0 && (
+        <>
+          <div><span>Discount{doc.discountPct ? ` (${doc.discountPct}%)` : ""}</span><span>− {money(t.discount, f)}</span></div>
+          <div><span>Estimated revenue</span><span>{money(t.net, f)}</span></div>
+        </>
+      )}
+      <div><span>Tax ({doc.taxRate}%)</span><span>{money(t.tax, f)}</span></div>
+      {doc.roundOff && <div><span>Round off</span><span>{money(t.roundOff, f)}</span></div>}
+      <div className="grand"><span>{totalLabel}</span><span>{money(t.total, f)}</span></div>
     </div>
   );
 }
@@ -54,6 +67,10 @@ export function DocumentView({
   doc,
   notes,
   totalLabel,
+  heading,
+  header,
+  remarks,
+  billTo,
 }: {
   title: string;
   number: string;
@@ -64,15 +81,23 @@ export function DocumentView({
   doc: Billable;
   notes: string;
   totalLabel: string;
+  heading?: string; // e.g. the estimate title
+  header?: string; // rich text above the lines
+  remarks?: string; // rich text below the totals
+  billTo?: { address?: string; gstin?: string; pan?: string };
 }) {
   const { data } = useStore();
   const s = data.settings;
   const client = data.clients.find((c) => c.id === clientId);
   const project = data.projects.find((p) => p.id === projectId);
+  const f = docFormat(doc.country, s);
+  const address = billTo?.address ?? client?.address;
+  const gstin = billTo?.gstin ?? client?.taxId;
   return (
     <div className="invoice-doc print-area">
       <div className="row between top">
         <div>
+          {s.logo && <img className="doc-logo" src={s.logo} alt="" />}
           <div className="doc-agency">{s.agencyName}</div>
           <div className="muted pre">{s.agencyAddress}</div>
           <div className="muted">{s.agencyEmail}</div>
@@ -91,21 +116,25 @@ export function DocumentView({
         <div className="muted small">BILL TO</div>
         <strong>{client?.name}</strong>
         {client?.contactName && <div>{client.contactName}</div>}
-        {client?.address && <div className="pre">{client.address}</div>}
+        {address && <div className="pre">{address}</div>}
         {client?.email && <div>{client.email}</div>}
-        {client?.taxId && <div>Tax ID: {client.taxId}</div>}
-        {project && <div className="muted small">Job: {project.name}</div>}
+        {gstin && <div>GSTIN: {gstin}</div>}
+        {(billTo?.pan ?? client?.pan) && <div>PAN: {billTo?.pan ?? client?.pan}</div>}
+        {project && <div className="muted small">Job: {project.number ? `${project.number} · ` : ""}{project.name}</div>}
       </div>
+      {heading && <h2 className="doc-heading">{heading}</h2>}
+      <RichTextView html={header} />
       <table className="table doc-table">
         <thead><tr><th>Description</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
         <tbody>
           {doc.items.map((it) => (
-            <tr key={it.id}><td>{it.description}</td><td className="num">{it.quantity}</td><td className="num">{money(it.rate, s)}</td><td className="num">{money(it.quantity * it.rate, s)}</td></tr>
+            <tr key={it.id}><td>{it.description}</td><td className="num">{it.quantity}</td><td className="num">{money(it.rate, f)}</td><td className="num">{money(it.quantity * it.rate, f)}</td></tr>
           ))}
         </tbody>
       </table>
       <Totals doc={doc} settings={s} totalLabel={totalLabel} />
       {notes && <div className="doc-notes pre">{notes}</div>}
+      {remarks && <div className="doc-notes"><RichTextView html={remarks} /></div>}
     </div>
   );
 }

@@ -194,6 +194,52 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .totals > div { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 .totals .grand { font-weight: 650; font-size: 16px; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 4px; }
 
+/* Full-page estimate form */
+.back-title { display: flex; align-items: center; gap: 4px; }
+.back-btn { font-size: 30px; padding: 0 8px 4px; margin-left: -8px; }
+.estimate-form { gap: 16px 24px; padding: 24px; }
+.estimate-top { gap: 16px; flex-wrap: wrap; }
+.estimate-top > .field { width: 200px; }
+.estimate-brand { display: flex; align-items: center; gap: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-size: 13px; }
+.estimate-brand img { max-height: 64px; max-width: 220px; object-fit: contain; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.grid-2-tight { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.estimate-totals { display: flex; flex-direction: column; gap: 12px; }
+.estimate-totals input[readonly], .estimate-form input[readonly] { background: var(--hover); }
+.estimate-totals .field .field { gap: 4px; }
+.estimate-totals .grid-2-tight { margin-top: 0; }
+.grand-input { font-weight: 650; font-size: 16px; }
+.form-actions.start { justify-content: flex-start; }
+.approval { display: flex; align-items: center; gap: 2px; margin-top: 4px; flex-wrap: wrap; }
+.approval .btn.ghost { padding: 2px 6px; }
+.more summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+@media (min-width: 761px) {
+  .form-rows .field.span2 { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; }
+  .form-rows .field.span2:has(textarea) { align-items: start; }
+  .form-rows > .check.span2 { padding-left: 162px; }
+}
+input.num { text-align: right; }
+
+/* Rich text (Quill) in the app's colours */
+.rte .ql-toolbar.ql-snow { border: 1px solid var(--border); border-radius: 8px 8px 0 0; background: var(--surface); }
+.rte .ql-container.ql-snow { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface); font: inherit; min-height: 120px; }
+.rte .ql-container.ql-snow { height: auto; }
+.rte .ql-editor { min-height: 120px; height: auto; }
+.rte { display: flex; flex-direction: column; }
+.rte .ql-editor.ql-blank::before { color: var(--muted); font-style: normal; }
+.rte .ql-snow .ql-stroke { stroke: var(--muted); }
+.rte .ql-snow .ql-fill { fill: var(--muted); }
+.rte .ql-snow .ql-picker { color: var(--muted); }
+.rte .ql-snow button:hover .ql-stroke, .rte .ql-snow .ql-active .ql-stroke { stroke: var(--primary); }
+.rte .ql-snow button:hover .ql-fill, .rte .ql-snow .ql-active .ql-fill { fill: var(--primary); }
+.rte .ql-snow .ql-picker-options { background: var(--surface); border-color: var(--border); }
+.rte-loading { border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-height: 160px; }
+.rte-view.ql-editor { padding: 0; min-height: 0; height: auto; overflow: visible; white-space: normal; }
+.doc-logo { max-height: 56px; max-width: 200px; object-fit: contain; display: block; margin-bottom: 6px; }
+.doc-heading { font-size: 16px; margin: 0; }
+.logo-preview { max-height: 48px; max-width: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff; }
+
 /* Invoice document */
 .invoice-doc { display: flex; flex-direction: column; gap: 20px; padding: 8px 4px 16px; }
 .doc-agency { font-size: 18px; font-weight: 650; }
@@ -226,6 +272,9 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
   .queue { min-height: 108px; padding: 14px; }
   .queue-count { font-size: 20px; }
   .form { grid-template-columns: minmax(0, 1fr); }
+  .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .estimate-form { padding: 16px; }
+  .estimate-top > .field { width: 100%; }
   .form > div:empty { display: none; }
   .items-head { display: none; }
   .items-row { grid-template-columns: 1fr 1fr 32px; }

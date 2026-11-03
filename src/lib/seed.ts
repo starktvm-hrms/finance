@@ -14,6 +14,10 @@ export const defaultSettings: Settings = {
   estimatePrefix: "EST-",
   nextEstimateNumber: 1,
   estimateValidDays: 30,
+  jobPrefix: "JOB-",
+  nextJobNumber: 1,
+  departmentHeads: [],
+  logo: "",
   paymentTermsDays: 15,
 };
 
@@ -37,6 +41,14 @@ export function sampleData(): AppData {
     { id: c2, name: "Northwind Realty", contactName: "Rahul Mehta", email: "rahul@northwind.example", phone: "", address: "Mumbai", taxId: "", notes: "", createdAt: created },
     { id: c3, name: "Kite Fintech", contactName: "Sara Thomas", email: "sara@kite.example", phone: "", address: "Kochi", taxId: "", notes: "", createdAt: created },
   ];
+  const products: Record<string, AppData["clients"][number]["products"]> = {
+    [c1]: [{ name: "Brightleaf Tea", subProducts: ["Green Tea", "Masala Chai"] }, { name: "Brightleaf Snacks", subProducts: ["Millet Bars"] }],
+    [c2]: [{ name: "Northwind Homes", subProducts: ["Whitefield Towers", "Lakeview Villas"] }],
+    [c3]: [{ name: "Kite App", subProducts: ["Payments", "Savings"] }],
+  };
+  data.clients = data.clients.map((c) => ({ ...c, products: products[c.id] }));
+  data.settings.departmentHeads = ["Priya Nair (Creative)", "Rahul Menon (Media)"];
+
   data.projects = [
     { id: p1, clientId: c1, name: "Website redesign", status: "completed", budget: 700000, startDate: iso(5, 3), endDate: iso(2, 20), notes: "", createdAt: created },
     { id: p2, clientId: c1, name: "Social media retainer", status: "active", budget: 60000 * 12, startDate: iso(4, 1), endDate: "", notes: "Monthly retainer", createdAt: created },
@@ -47,6 +59,19 @@ export function sampleData(): AppData {
     { id: p7, clientId: c2, name: "Landing page sprint", status: "lead", budget: 0, startDate: "", endDate: "", notes: "", createdAt: created },
     { id: p8, clientId: c1, name: "Festive campaign", status: "active", budget: 0, startDate: iso(0, 1), endDate: "", notes: "", createdAt: created },
   ];
+
+  // Job numbers, products and contacts for the sample jobs
+  const jobInfo: [string, string, string][] = [
+    ["Brightleaf Tea", "Green Tea", "Anita Rao"], ["Brightleaf Tea", "Masala Chai", "Anita Rao"],
+    ["Northwind Homes", "Whitefield Towers", "Rahul Mehta"], ["Kite App", "Payments", "Sara Thomas"],
+    ["Kite App", "Savings", "Sara Thomas"], ["Northwind Homes", "Lakeview Villas", "Rahul Mehta"],
+    ["Northwind Homes", "Whitefield Towers", "Rahul Mehta"], ["Brightleaf Snacks", "Millet Bars", "Anita Rao"],
+  ];
+  data.projects = data.projects.map((p, i) => ({
+    ...p, number: `JOB-${String(i + 1).padStart(4, "0")}`, product: jobInfo[i][0], subProduct: jobInfo[i][1], contactPerson: jobInfo[i][2],
+  }));
+  data.projects[5] = { ...data.projects[5], approval: { head: "Rahul Menon (Media)", status: "pending", decidedDate: "" } };
+  data.settings.nextJobNumber = data.projects.length + 1;
 
   let n = 1;
   const inv = (clientId: string, projectId: string, monthsAgo: number, items: [string, number, number][], status: "draft" | "sent" | "paid") => {
@@ -103,6 +128,10 @@ export function sampleData(): AppData {
       notes: "",
       decidedDate: status === "approved" || status === "rejected" || status === "invoiced" ? addDays(issue, 4) : "",
       invoiceId: status === "invoiced" ? data.invoices[0].id : "",
+      title: data.projects.find((p) => p.id === projectId)?.name ?? "",
+      clientAddress: data.clients.find((c) => c.id === clientId)?.address ?? "",
+      country: "IN" as const,
+      roundOff: true,
       createdAt: created,
     };
   };
