@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { COUNTRIES, type Invoice, type InvoiceStatus } from "../types";
+import { COUNTRIES, ESTIMATE_TYPES, type EstimateType, type Invoice, type InvoiceStatus } from "../types";
 import { useStore } from "../lib/store";
-import { clearParam } from "../lib/route";
+import { clearParam, go } from "../lib/route";
 import { addDays, docFormat, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
 import { estimateType, typeInfo } from "../lib/doctype";
 import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
@@ -20,8 +20,9 @@ const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
 
 /** "unpaid" = sent + overdue: everything still to collect. */
 type Filter = DisplayStatus | "all" | "unpaid";
-const TABS: { id: Filter; label: string; hint: string }[] = [
-  { id: "all", label: "All", hint: "Every invoice" },
+const TYPE_TABS = [{ id: "all", label: "All", hint: "Every type" }, ...ESTIMATE_TYPES];
+const STATUSES: { id: Filter; label: string; hint: string }[] = [
+  { id: "all", label: "All", hint: "Every status" },
   { id: "draft", label: "Draft", hint: "Not sent to the client yet" },
   { id: "unpaid", label: "To collect", hint: "Sent and not yet paid" },
   { id: "overdue", label: "Overdue", hint: "Past the due date and not paid" },
@@ -56,7 +57,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
       paidDate: "",
       country: COUNTRIES.find((c) => c.currency === s.currency)?.code ?? "IN",
       roundOff: true,
-      type: "project",
+      type: typeTab === "all" ? "project" : (typeTab as EstimateType),
       title: "",
       header: "",
       remarks: "",
@@ -78,25 +79,30 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
   });
   const [filter, setFilter] = useState<Filter>(() => {
     const f = params.get("status") as Filter | null;
-    return f && TABS.some((t) => t.id === f) ? f : "all";
+    return f && STATUSES.some((t) => t.id === f) ? f : "all";
   });
   const [q, setQ] = useState("");
-  const tab = TABS.find((t) => t.id === filter)!;
+  const status = STATUSES.find((t) => t.id === filter)!;
+  // Tab = type, like Estimates (#/invoices?type=media&status=unpaid)
+  const typeTab = TYPE_TABS.some((t) => t.id === params.get("type")) ? (params.get("type") as string) : "all";
+  const typeLabel = TYPE_TABS.find((t) => t.id === typeTab)!;
+  const ofType = (i: Invoice) => typeTab === "all" || estimateType(i) === typeTab;
+  const switchTab = (type: string) => go("invoices", { ...(type !== "all" && { type }), ...(filter !== "all" && { status: filter }) });
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const row = tabsRef.current;
     const el = row?.querySelector<HTMLElement>(".tab.active");
     if (row && el) row.scrollLeft = el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
-  }, [filter]);
+  }, [typeTab]);
 
   const rows = useMemo(
     () =>
       data.invoices
-        .filter((i) => matches(filter, invoiceDisplayStatus(i)) && `${i.number} ${clientName(i.clientId)} ${jobName(i.projectId)} ${i.title ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((i) => ofType(i) && matches(filter, invoiceDisplayStatus(i)) && `${i.number} ${clientName(i.clientId)} ${jobName(i.projectId)} ${i.title ?? ""}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.invoices, data.clients, data.projects, filter, q], // eslint-disable-line react-hooks/exhaustive-deps
+    [data.invoices, data.clients, data.projects, filter, q, typeTab], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const count = (f: Filter) => data.invoices.filter((i) => matches(f, invoiceDisplayStatus(i))).length;
+  const count = (f: Filter) => data.invoices.filter((i) => ofType(i) && matches(f, invoiceDisplayStatus(i))).length;
   const shownTotal = rows.reduce((t, i) => t + invoiceTotals(i).total, 0);
 
   const save = (inv: Invoice) => {
@@ -139,34 +145,39 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
           <p className="muted">Raise, send and collect client invoices.</p>
         </div>
       </div>
-      <div ref={tabsRef} className="tabs directory-tabs" role="tablist" aria-label="Invoice status">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={filter === t.id} className={`tab ${filter === t.id ? "active" : ""}`} onClick={() => setFilter(t.id)}>
+      <div ref={tabsRef} className="tabs directory-tabs" role="tablist" aria-label="Invoice types">
+        {TYPE_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={typeTab === t.id} className={`tab ${typeTab === t.id ? "active" : ""}`} onClick={() => switchTab(t.id)}>
             {t.label}
-            <span className="tab-count">{count(t.id)}</span>
+            <span className="tab-count">{t.id === "all" ? data.invoices.length : data.invoices.filter((i) => estimateType(i) === t.id).length}</span>
           </button>
         ))}
       </div>
       <PageHeader
         level={2}
-        title={filter === "all" ? "All invoices" : `${tab.label} invoices`}
-        subtitle={`${tab.hint} · ${rows.length} shown · ${money(shownTotal, s)}`}
+        title={typeTab === "all" ? "All invoices" : `${typeLabel.label} invoices`}
+        subtitle={`${filter === "all" ? typeLabel.hint : status.hint} · ${rows.length} shown · ${money(shownTotal, s)}`}
         actions={
           <>
+            <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Status">
+              {STATUSES.map((f) => <option key={f.id} value={f.id}>{f.id === "all" ? "All statuses" : f.label} ({count(f.id)})</option>)}
+            </select>
             <input placeholder="Search number, client or job…" value={q} onChange={(e) => setQ(e.target.value)} />
             <button className="btn" onClick={exportCSV} disabled={!rows.length}>Export CSV</button>
-            <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>+ New invoice</button>
+            <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>
+              + New {typeTab === "all" ? "" : `${typeLabel.label.toLowerCase()} `}invoice
+            </button>
           </>
         }
       />
 
       <div className="card flush">
         {rows.length === 0 ? (
-          <Empty>{data.clients.length ? "No invoices here." : "Add a client first, then create invoices."}</Empty>
+          <Empty>{!data.clients.length ? "Add a client first, then create invoices." : typeTab === "all" ? "No invoices here." : `No ${typeLabel.label.toLowerCase()} invoices${filter === "all" ? "" : " with this status"}.`}</Empty>
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Number</th><th>Type</th><th>Client / job</th><th>Issued</th><th>Due</th><th>Status</th><th className="num">Total</th><th /></tr>
+              <tr><th>Number</th>{typeTab === "all" && <th>Type</th>}<th>Client / job</th><th>Issued</th><th>Due</th><th>Status</th><th className="num">Total</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((i) => {
@@ -174,7 +185,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                 return (
                   <tr key={i.id} className="clickable" onClick={() => setView(i)}>
                     <td><strong>{i.number}</strong></td>
-                    <td className="muted">{typeInfo(estimateType(i))?.label}</td>
+                    {typeTab === "all" && <td className="muted">{typeInfo(estimateType(i))?.label}</td>}
                     <td>{clientName(i.clientId)}{(i.projectId || i.title) && <div className="muted small">{jobName(i.projectId) || i.title}</div>}</td>
                     <td className="nowrap">{fmtDate(i.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "overdue" ? "bad" : ""}`}>{fmtDate(i.dueDate, s.locale)}</td>
