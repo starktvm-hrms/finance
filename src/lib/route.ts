@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export const PAGE_IDS = ["dashboard", "estimates", "invoices", "expenses", "projects", "clients", "vendors", "settings"] as const;
+export const PAGE_IDS = ["dashboard", "estimates", "invoices", "expenses", "projects", "clients", "vendors", "people", "settings"] as const;
 export type PageId = (typeof PAGE_IDS)[number];
 
 export interface Route {

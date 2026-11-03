@@ -1,4 +1,4 @@
-import type { AppData, Settings } from "../types";
+import { DEFAULT_DEPARTMENTS, type AppData, type Settings } from "../types";
 import { addDays, uid } from "./util";
 
 export const defaultSettings: Settings = {
@@ -70,8 +70,13 @@ export function letterheadPatch(s: Settings): Partial<Settings> | null {
   return patch;
 }
 
+export function withDefaultDepartments(d: AppData): AppData {
+  const t0 = Date.now();
+  return { ...d, departments: DEFAULT_DEPARTMENTS.map((name, i) => ({ id: uid(), name, description: "", createdAt: new Date(t0 + i).toISOString() })) };
+}
+
 export function emptyData(): AppData {
-  return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], projects: [], estimates: [], invoices: [], expenses: [] };
+  return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], employees: [], departments: [], branches: [], projects: [], estimates: [], invoices: [], expenses: [] };
 }
 
 /** Sample data so the dashboard isn't empty on first run. Clear it from Settings. */

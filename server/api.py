@@ -54,7 +54,7 @@ DATA_FILE = DATA_DIR / "data.json"
 BACKUP_DIR = DATA_DIR / "backups"
 KEEP_BACKUPS = 30
 MAX_BODY = 10 * 1024 * 1024
-COLLECTIONS = {"clients", "vendors", "projects", "estimates", "invoices", "expenses"}
+COLLECTIONS = {"clients", "vendors", "employees", "departments", "branches", "projects", "estimates", "invoices", "expenses"}
 
 USERS_FILE = DATA_DIR / "users.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"

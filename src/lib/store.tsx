@@ -1,13 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { AppData, Client, Estimate, Expense, Invoice, Project, Settings, Vendor } from "../types";
+import { DEFAULT_DEPARTMENTS, type AppData, type Branch, type Client, type Department, type Employee, type Estimate, type Expense, type Invoice, type Project, type Settings, type Vendor } from "../types";
 import { SignedOutError, getAdapter, readBrowserData } from "./adapter";
 import { applyOp, type Collection, type Op } from "./ops";
-import { emptyData, letterheadPatch, sampleData } from "./seed";
+import { emptyData, letterheadPatch, sampleData, withDefaultDepartments } from "./seed";
 
 type ItemOf<C extends Collection> = C extends "clients"
   ? Client
   : C extends "vendors"
     ? Vendor
+    : C extends "employees"
+    ? Employee
+    : C extends "departments"
+    ? Department
+    : C extends "branches"
+    ? Branch
     : C extends "projects"
     ? Project
     : C extends "estimates"
@@ -152,6 +158,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rev.current = snap.rev;
           const d = normalize(snap.data);
           setData(d);
+          // One-time: data saved before departments existed gets the default list.
+          if (!Array.isArray(snap.data.departments)) {
+            const t0 = Date.now();
+            for (const [i, name] of DEFAULT_DEPARTMENTS.entries()) {
+              const item = { id: crypto.randomUUID?.() ?? `${t0}-${name}`, name, description: "", createdAt: new Date(t0 + i).toISOString() };
+              setData((x) => applyOp(x, { op: "upsert", col: "departments", item }));
+              queue.current.push({ op: "upsert", col: "departments", item });
+            }
+            await flush();
+          }
           // One-time: put the agency's letterhead into blank Settings fields.
           const patch = letterheadPatch(d.settings);
           if (patch) {
@@ -163,7 +179,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Nothing stored yet. On the server, start from whatever this browser
           // had (so earlier work isn't lost); otherwise an empty book.
           const local = adapter.shared ? readBrowserData() : null;
-          const initial = local ? normalize(local) : adapter.shared ? emptyData() : sampleData();
+          const start = local ? normalize(local) : adapter.shared ? emptyData() : sampleData();
+          const initial = start.departments.length ? start : withDefaultDepartments(start);
           setData(initial);
           queue.current.push({ op: "replace", data: initial });
           await flush();
