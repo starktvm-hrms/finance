@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { Estimate, EstimateStatus, Invoice } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ESTIMATE_TYPES, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
 import { addDays, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
@@ -24,6 +24,11 @@ const FILTERS: { id: EstimateStatus | "all"; label: string }[] = [
   { id: "rejected", label: "Rejected" },
 ];
 
+/** Estimates made before types existed count as "Project". */
+export const estimateType = (e: Estimate): EstimateType => e.type ?? "project";
+const typeInfo = (id: string) => ESTIMATE_TYPES.find((t) => t.id === id);
+const TYPE_TABS = [{ id: "all", label: "All", hint: "Every estimate, of every type" }, ...ESTIMATE_TYPES];
+
 const displayStatus = (e: Estimate) => (e.status === "sent" && e.validUntil && e.validUntil < today() ? "expired" : e.status);
 
 export default function Estimates({ params }: { params: URLSearchParams }) {
@@ -32,11 +37,17 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
 
+  // Tab = estimate type (#/estimates?type=media); "all" shows every type.
+  const typeTab = TYPE_TABS.some((t) => t.id === params.get("type")) ? (params.get("type") as string) : "all";
+  const tabInfo = TYPE_TABS.find((t) => t.id === typeTab)!;
+  const switchTab = (type: string) => go("estimates", { ...(type !== "all" && { type }), ...(filter !== "all" && { status: filter }) });
+
   const blank = (projectId = ""): Estimate => {
     const job = data.projects.find((p) => p.id === projectId);
     const issue = today();
     return {
       id: uid(),
+      type: typeTab === "all" ? "project" : (typeTab as EstimateType),
       number: `${s.estimatePrefix}${String(s.nextEstimateNumber).padStart(4, "0")}`,
       clientId: job?.clientId ?? data.clients[0]?.id ?? "",
       projectId: job?.id ?? "",
@@ -70,14 +81,20 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     return FILTERS.some((x) => x.id === f) ? (f as EstimateStatus) : "all";
   });
   const [q, setQ] = useState("");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = tabsRef.current;
+    const el = row?.querySelector<HTMLElement>(".tab.active");
+    if (row && el) row.scrollLeft = el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
+  }, [typeTab]);
 
   const isNew = (e: Estimate) => !data.estimates.some((x) => x.id === e.id);
   const rows = useMemo(
     () =>
       data.estimates
-        .filter((e) => (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((e) => (typeTab === "all" || estimateType(e) === typeTab) && (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.estimates, data.clients, data.projects, filter, q], // eslint-disable-line react-hooks/exhaustive-deps
+    [data.estimates, data.clients, data.projects, filter, q, typeTab], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const save = (e: Estimate) => {
@@ -135,32 +152,47 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>Estimates</h1>
+          <p className="muted">Quote a job, get the client's approval, then raise the invoice.</p>
+        </div>
+      </div>
+      <div ref={tabsRef} className="tabs directory-tabs" role="tablist" aria-label="Estimate types">
+        {TYPE_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={typeTab === t.id} className={`tab ${typeTab === t.id ? "active" : ""}`} onClick={() => switchTab(t.id)}>
+            {t.label}
+            <span className="tab-count">{t.id === "all" ? data.estimates.length : data.estimates.filter((e) => estimateType(e) === t.id).length}</span>
+          </button>
+        ))}
+      </div>
       <PageHeader
-        title="Estimates"
-        subtitle="Quote a job, get the client's approval, then raise the invoice."
+        level={2}
+        title={typeTab === "all" ? "All estimates" : `${tabInfo.label} estimates`}
+        subtitle={`${tabInfo.hint} · ${rows.length} shown`}
         actions={
-          <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>+ New estimate</button>
+          <>
+            <select value={filter} onChange={(e) => setFilter(e.target.value as EstimateStatus | "all")} aria-label="Status">
+              {FILTERS.map((f) => {
+                const n = data.estimates.filter((e) => (typeTab === "all" || estimateType(e) === typeTab) && (f.id === "all" || e.status === f.id)).length;
+                return <option key={f.id} value={f.id}>{f.id === "all" ? "All statuses" : f.label} ({n})</option>;
+              })}
+            </select>
+            <input placeholder="Search number, client or job…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>
+              + New {typeTab === "all" ? "" : `${tabInfo.label.toLowerCase()} `}estimate
+            </button>
+          </>
         }
       />
-      <div className="filters">
-        <div className="tabs">
-          {FILTERS.map((f) => (
-            <button key={f.id} className={`tab ${filter === f.id ? "active" : ""}`} onClick={() => setFilter(f.id)}>
-              {f.label}
-              <span className="tab-count">{f.id === "all" ? data.estimates.length : data.estimates.filter((e) => e.status === f.id).length}</span>
-            </button>
-          ))}
-        </div>
-        <input placeholder="Search number, client or job…" value={q} onChange={(e) => setQ(e.target.value)} />
-      </div>
 
       <div className="card flush">
         {rows.length === 0 ? (
-          <Empty>{data.clients.length ? "No estimates here." : "Add a client first, then create estimates."}</Empty>
+          <Empty>{!data.clients.length ? "Add a client first, then create estimates." : typeTab === "all" ? "No estimates here." : `No ${tabInfo.label.toLowerCase()} estimates${filter === "all" ? "" : " with this status"}.`}</Empty>
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Number</th><th>Client / job</th><th>Issued</th><th>Valid until</th><th>Status</th><th className="num">Total</th><th /></tr>
+              <tr><th>Number</th>{typeTab === "all" && <th>Type</th>}<th>Client / job</th><th>Issued</th><th>Valid until</th><th>Status</th><th className="num">Total</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((e) => {
@@ -168,6 +200,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
                 return (
                   <tr key={e.id} className="clickable" onClick={() => setView(e)}>
                     <td><strong>{e.number}</strong></td>
+                    {typeTab === "all" && <td className="muted">{typeInfo(estimateType(e))?.label}</td>}
                     <td>{clientName(e.clientId)}{e.projectId && <div className="muted small">{jobName(e.projectId)}</div>}</td>
                     <td className="nowrap">{fmtDate(e.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "expired" ? "warn" : ""}`}>{fmtDate(e.validUntil, s.locale)}</td>
@@ -185,9 +218,9 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       {edit && <EstimateEditor initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={save} />}
 
       {view && (
-        <Modal title={`Estimate ${view.number}`} onClose={() => setView(null)} wide>
+        <Modal title={`${typeInfo(estimateType(view))?.label} estimate ${view.number}`} onClose={() => setView(null)} wide>
           <DocumentView
-            title="ESTIMATE"
+            title={`${typeInfo(estimateType(view))?.label.toUpperCase()} ESTIMATE`}
             number={view.number}
             clientId={view.clientId}
             projectId={view.projectId}
@@ -232,9 +265,14 @@ function EstimateEditor({ initial, isNew, onSave, onCancel }: { initial: Estimat
   const jobs = data.projects.filter((p) => p.clientId === est.clientId);
 
   return (
-    <Modal title={isNew ? "New estimate" : `Edit ${est.number}`} onClose={onCancel} wide>
+    <Modal title={isNew ? `New ${typeInfo(estimateType(est))?.label.toLowerCase()} estimate` : `Edit ${est.number}`} onClose={onCancel} wide>
       <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
         <Field label="Estimate number"><input required value={est.number} onChange={(e) => setEst({ ...est, number: e.target.value })} /></Field>
+        <Field label="Type">
+          <select value={estimateType(est)} onChange={(e) => setEst({ ...est, type: e.target.value as EstimateType })}>
+            {ESTIMATE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </Field>
         <Field label="Status">
           <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; setEst({ ...est, status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
             <option value="draft">Draft</option>
