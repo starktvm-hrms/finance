@@ -4,6 +4,7 @@ import { useStore } from "../lib/store";
 import { netRevenue } from "../lib/metrics";
 import { invoiceTotals, money, uid } from "../lib/util";
 import { Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
+import { clientCode } from "../lib/jobno";
 
 const blank = (): Client => ({ id: uid(), name: "", contactName: "", email: "", phone: "", address: "", taxId: "", notes: "", createdAt: new Date().toISOString() });
 
@@ -84,6 +85,9 @@ export default function Clients() {
             <Field label="Phone"><input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
             <Field label="Tax ID / GSTIN"><input value={edit.taxId} onChange={(e) => setEdit({ ...edit, taxId: e.target.value })} /></Field>
             <Field label="PAN"><input value={edit.pan ?? ""} onChange={(e) => setEdit({ ...edit, pan: e.target.value.toUpperCase() })} maxLength={10} /></Field>
+            <Field label="Code (used in job numbers)">
+              <input value={edit.code ?? ""} maxLength={6} onChange={(e) => setEdit({ ...edit, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} placeholder={`${clientCode({ name: edit.name })} (automatic)`} />
+            </Field>
             <Field label="Billing address" span={2}><textarea rows={2} value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
             <Field label="Products (one per line — Product: sub-product, sub-product)" span={2}>
               <textarea

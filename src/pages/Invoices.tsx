@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
-import type { Invoice, InvoiceStatus } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { COUNTRIES, type Invoice, type InvoiceStatus } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam } from "../lib/route";
 import { addDays, docFormat, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
-import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
-import { DocumentView, ItemsEditor, Totals, newLine } from "../components/Doc";
+import { estimateType, typeInfo } from "../lib/doctype";
+import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
+import { newLine } from "../components/Doc";
+import ProductionEstimate from "../components/ProductionEstimate";
+import MediaEstimate from "../components/MediaEstimate";
+import SheetForm from "../components/SheetForm";
 
 const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -16,34 +20,30 @@ const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
 
 /** "unpaid" = sent + overdue: everything still to collect. */
 type Filter = DisplayStatus | "all" | "unpaid";
-const FILTERS: Filter[] = ["all", "draft", "unpaid", "overdue", "paid", "cancelled"];
+const TABS: { id: Filter; label: string; hint: string }[] = [
+  { id: "all", label: "All", hint: "Every invoice" },
+  { id: "draft", label: "Draft", hint: "Not sent to the client yet" },
+  { id: "unpaid", label: "To collect", hint: "Sent and not yet paid" },
+  { id: "overdue", label: "Overdue", hint: "Past the due date and not paid" },
+  { id: "paid", label: "Paid", hint: "Payment received" },
+  { id: "cancelled", label: "Cancelled", hint: "Cancelled invoices" },
+];
 const matches = (f: Filter, st: DisplayStatus) => f === "all" || f === st || (f === "unpaid" && (st === "sent" || st === "overdue"));
 
 export default function Invoices({ params }: { params: URLSearchParams }) {
   const { data, upsert, remove, updateSettings } = useStore();
   const s = data.settings;
-  const [edit, setEdit] = useState<Invoice | null>(null);
-  const [view, setView] = useState<Invoice | null>(() => {
-    const id = params.get("open");
-    if (id) clearParam("open");
-    return data.invoices.find((i) => i.id === id) ?? null;
-  });
-  const [filter, setFilter] = useState<Filter>(() => {
-    const f = params.get("status") as Filter | null;
-    return f && FILTERS.includes(f) ? f : "all";
-  });
-  const [q, setQ] = useState("");
-
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
-  const isNew = (inv: Invoice) => !data.invoices.some((i) => i.id === inv.id);
+  const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
   const fromEstimate = (inv: Invoice) => data.estimates.find((e) => e.invoiceId === inv.id);
+  const isNew = (inv: Invoice) => !data.invoices.some((i) => i.id === inv.id);
 
   const blank = (): Invoice => {
     const issue = today();
     return {
       id: uid(),
-      number: `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}`,
-      clientId: data.clients[0]?.id ?? "",
+      number: "", // given on save unless typed
+      clientId: "",
       projectId: "",
       issueDate: issue,
       dueDate: addDays(issue, s.paymentTermsDays),
@@ -51,24 +51,62 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
       items: [newLine()],
       taxRate: s.defaultTaxRate,
       discount: 0,
+      discountPct: 0,
       notes: "",
       paidDate: "",
+      country: COUNTRIES.find((c) => c.currency === s.currency)?.code ?? "IN",
+      roundOff: true,
+      type: "project",
+      title: "",
+      header: "",
+      remarks: "",
+      clientAddress: "",
       createdAt: new Date().toISOString(),
     };
   };
 
+  // #/invoices?open=<id> shows one; ?edit=<id> opens it in the form; ?status=… picks a tab.
+  const [edit, setEdit] = useState<Invoice | null>(() => {
+    const id = params.get("edit");
+    if (id) clearParam("edit");
+    return data.invoices.find((i) => i.id === id) ?? null;
+  });
+  const [view, setView] = useState<Invoice | null>(() => {
+    const id = params.get("open");
+    if (id) clearParam("open");
+    return data.invoices.find((i) => i.id === id) ?? null;
+  });
+  const [filter, setFilter] = useState<Filter>(() => {
+    const f = params.get("status") as Filter | null;
+    return f && TABS.some((t) => t.id === f) ? f : "all";
+  });
+  const [q, setQ] = useState("");
+  const tab = TABS.find((t) => t.id === filter)!;
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = tabsRef.current;
+    const el = row?.querySelector<HTMLElement>(".tab.active");
+    if (row && el) row.scrollLeft = el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
+  }, [filter]);
+
   const rows = useMemo(
     () =>
       data.invoices
-        .filter((i) => matches(filter, invoiceDisplayStatus(i)) && `${i.number} ${clientName(i.clientId)}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((i) => matches(filter, invoiceDisplayStatus(i)) && `${i.number} ${clientName(i.clientId)} ${jobName(i.projectId)} ${i.title ?? ""}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.invoices, data.clients, filter, q], // eslint-disable-line react-hooks/exhaustive-deps
+    [data.invoices, data.clients, data.projects, filter, q], // eslint-disable-line react-hooks/exhaustive-deps
   );
-
   const count = (f: Filter) => data.invoices.filter((i) => matches(f, invoiceDisplayStatus(i))).length;
+  const shownTotal = rows.reduce((t, i) => t + invoiceTotals(i).total, 0);
 
   const save = (inv: Invoice) => {
-    if (isNew(inv)) updateSettings({ nextInvoiceNumber: s.nextInvoiceNumber + 1 });
+    inv = { ...inv, number: inv.number.trim() };
+    const clash = inv.number && data.invoices.find((x) => x.id !== inv.id && x.number.toLowerCase() === inv.number.toLowerCase());
+    if (clash && !window.confirm(`Invoice No. ${inv.number} is already used by another invoice (${clientName(clash.clientId)}). Save anyway?`)) return;
+    if (!inv.number) {
+      inv = { ...inv, number: `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}` };
+      updateSettings({ nextInvoiceNumber: s.nextInvoiceNumber + 1 });
+    }
     upsert("invoices", inv);
     setEdit(null);
   };
@@ -76,41 +114,51 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
   const setStatus = (inv: Invoice, status: InvoiceStatus) =>
     upsert("invoices", { ...inv, status, paidDate: status === "paid" ? inv.paidDate || today() : "" });
 
+  const startEdit = (inv: Invoice) => {
+    setView(null);
+    setEdit(data.invoices.find((x) => x.id === inv.id) ?? inv);
+  };
+
   const exportCSV = () =>
     downloadFile(
       `invoices-${today()}.csv`,
       toCSV(rows.map((i) => {
         const t = invoiceTotals(i);
-        return { number: i.number, client: clientName(i.clientId), issued: i.issueDate, due: i.dueDate, status: invoiceDisplayStatus(i), subtotal: t.subtotal, discount: t.discount, tax: t.tax, total: t.total, paid_on: i.paidDate };
+        return { number: i.number, type: typeInfo(estimateType(i))?.label, client: clientName(i.clientId), job: jobName(i.projectId), issued: i.issueDate, due: i.dueDate, status: invoiceDisplayStatus(i), subtotal: t.subtotal, discount: t.discount, tax: t.tax, round_off: t.roundOff, total: t.total, paid_on: i.paidDate };
       })),
       "text/csv",
     );
 
-  const label = (f: Filter) => (f === "all" ? "All" : f === "unpaid" ? "To collect" : STATUS[f].label);
+  if (edit) return <SheetForm kind="invoice" initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={(d) => save(d as Invoice)} />;
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>Invoices</h1>
+          <p className="muted">Raise, send and collect client invoices.</p>
+        </div>
+      </div>
+      <div ref={tabsRef} className="tabs directory-tabs" role="tablist" aria-label="Invoice status">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={filter === t.id} className={`tab ${filter === t.id ? "active" : ""}`} onClick={() => setFilter(t.id)}>
+            {t.label}
+            <span className="tab-count">{count(t.id)}</span>
+          </button>
+        ))}
+      </div>
       <PageHeader
-        title="Invoices"
-        subtitle="Raise, send and collect client invoices."
+        level={2}
+        title={filter === "all" ? "All invoices" : `${tab.label} invoices`}
+        subtitle={`${tab.hint} · ${rows.length} shown · ${money(shownTotal, s)}`}
         actions={
           <>
+            <input placeholder="Search number, client or job…" value={q} onChange={(e) => setQ(e.target.value)} />
             <button className="btn" onClick={exportCSV} disabled={!rows.length}>Export CSV</button>
             <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>+ New invoice</button>
           </>
         }
       />
-      <div className="filters">
-        <div className="tabs">
-          {FILTERS.map((k) => (
-            <button key={k} className={`tab ${filter === k ? "active" : ""}`} onClick={() => setFilter(k)}>
-              {label(k)}
-              <span className="tab-count">{count(k)}</span>
-            </button>
-          ))}
-        </div>
-        <input placeholder="Search number or client…" value={q} onChange={(e) => setQ(e.target.value)} />
-      </div>
 
       <div className="card flush">
         {rows.length === 0 ? (
@@ -118,7 +166,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Number</th><th>Client</th><th>Issued</th><th>Due</th><th>Status</th><th className="num">Total</th><th /></tr>
+              <tr><th>Number</th><th>Type</th><th>Client / job</th><th>Issued</th><th>Due</th><th>Status</th><th className="num">Total</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((i) => {
@@ -126,7 +174,8 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                 return (
                   <tr key={i.id} className="clickable" onClick={() => setView(i)}>
                     <td><strong>{i.number}</strong></td>
-                    <td>{clientName(i.clientId)}</td>
+                    <td className="muted">{typeInfo(estimateType(i))?.label}</td>
+                    <td>{clientName(i.clientId)}{(i.projectId || i.title) && <div className="muted small">{jobName(i.projectId) || i.title}</div>}</td>
                     <td className="nowrap">{fmtDate(i.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "overdue" ? "bad" : ""}`}>{fmtDate(i.dueDate, s.locale)}</td>
                     <td><Badge tone={STATUS[st].tone}>{STATUS[st].label}</Badge></td>
@@ -134,7 +183,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
                       {i.status === "draft" && <button className="btn ghost" onClick={() => setStatus(i, "sent")}>Mark sent</button>}
                       {i.status === "sent" && <button className="btn ghost good" onClick={() => setStatus(i, "paid")}>Mark paid</button>}
-                      <button className="btn ghost" onClick={() => setEdit(i)}>Edit</button>
+                      <button className="btn ghost" onClick={() => startEdit(i)} aria-label={`Edit ${i.number}`}>Edit</button>
                     </td>
                   </tr>
                 );
@@ -144,21 +193,9 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
-      {edit && <InvoiceEditor initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={save} />}
-
       {view && (
         <Modal title={`Invoice ${view.number}`} onClose={() => setView(null)} wide>
-          <DocumentView
-            title="INVOICE"
-            number={view.number}
-            clientId={view.clientId}
-            projectId={view.projectId}
-            dates={[["Issued", view.issueDate], ["Due", view.dueDate]]}
-            badge={view.status === "paid" && <Badge tone="good">Paid {fmtDate(view.paidDate, s.locale)}</Badge>}
-            doc={view}
-            notes={view.notes}
-            totalLabel="Total due"
-          />
+          {estimateType(view) === "media" ? <MediaEstimate est={view} kind="invoice" /> : <ProductionEstimate est={view} kind="invoice" />}
           {fromEstimate(view) && <p className="muted small no-print">Raised from estimate {fromEstimate(view)!.number}.</p>}
           <div className="form-actions no-print">
             <button
@@ -179,57 +216,11 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
               <button className="btn" onClick={() => { setStatus(view, "cancelled"); setView(null); }}>Cancel invoice</button>
             )}
             {view.status === "paid" && <button className="btn" onClick={() => { setStatus(view, "sent"); setView(null); }}>Mark unpaid</button>}
-            <button className="btn" onClick={() => { setEdit(view); setView(null); }}>Edit</button>
+            <button className="btn" onClick={() => startEdit(view)}>Edit</button>
             <button className="btn primary" onClick={() => window.print()}>Print / Save PDF</button>
           </div>
         </Modal>
       )}
     </div>
-  );
-}
-
-function InvoiceEditor({ initial, isNew, onSave, onCancel }: { initial: Invoice; isNew: boolean; onSave: (i: Invoice) => void; onCancel: () => void }) {
-  const { data } = useStore();
-  const s = data.settings;
-  const [inv, setInv] = useState(initial);
-  const projects = data.projects.filter((p) => p.clientId === inv.clientId);
-
-  return (
-    <Modal title={isNew ? "New invoice" : `Edit ${inv.number}`} onClose={onCancel} wide>
-      <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(inv); }}>
-        <Field label="Invoice number"><input required value={inv.number} onChange={(e) => setInv({ ...inv, number: e.target.value })} /></Field>
-        <Field label="Status">
-          <select value={inv.status} onChange={(e) => { const status = e.target.value as InvoiceStatus; setInv({ ...inv, status, paidDate: status === "paid" ? inv.paidDate || today() : "" }); }}>
-            <option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option>
-          </select>
-        </Field>
-        <Field label="Client">
-          <select required value={inv.clientId} onChange={(e) => setInv({ ...inv, clientId: e.target.value, projectId: "" })}>
-            {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Job (optional)">
-          <select value={inv.projectId} onChange={(e) => setInv({ ...inv, projectId: e.target.value })}>
-            <option value="">—</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Issue date"><input required type="date" value={inv.issueDate} onChange={(e) => setInv({ ...inv, issueDate: e.target.value, dueDate: isNew ? addDays(e.target.value, s.paymentTermsDays) : inv.dueDate })} /></Field>
-        <Field label="Due date"><input required type="date" value={inv.dueDate} onChange={(e) => setInv({ ...inv, dueDate: e.target.value })} /></Field>
-        {inv.status === "paid" && <Field label="Paid on"><input type="date" value={inv.paidDate} onChange={(e) => setInv({ ...inv, paidDate: e.target.value })} /></Field>}
-
-        <ItemsEditor items={inv.items} onChange={(items) => setInv({ ...inv, items })} settings={s} />
-
-        <Field label={`Discount (${s.currency})`}><input type="number" min={0} step="0.01" value={inv.discount || ""} onChange={(e) => setInv({ ...inv, discount: Number(e.target.value) })} /></Field>
-        <Field label="Tax rate (%)"><input type="number" min={0} step="0.01" value={inv.taxRate} onChange={(e) => setInv({ ...inv, taxRate: Number(e.target.value) })} /></Field>
-        <Field label="Notes / payment instructions" span={2}><textarea rows={2} value={inv.notes} onChange={(e) => setInv({ ...inv, notes: e.target.value })} /></Field>
-
-        <Totals doc={inv} settings={s} className="span2" />
-        <div className="form-actions span2">
-          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn primary">Save invoice</button>
-        </div>
-      </form>
-    </Modal>
   );
 }

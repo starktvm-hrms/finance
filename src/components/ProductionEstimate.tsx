@@ -1,4 +1,4 @@
-import type { Estimate, LineItem } from "../types";
+import type { LineItem, SheetDoc, SheetKind } from "../types";
 import { useStore } from "../lib/store";
 import { amountInWords, docFormat, gstSplit, gstState, invoiceTotals } from "../lib/util";
 import { RichTextView } from "./SafeHtml";
@@ -85,13 +85,14 @@ export function SignatureBlock() {
   );
 }
 
-export function EstimateFooter() {
+export function EstimateFooter({ kind = "estimate" }: { kind?: SheetKind }) {
   const s = useStore().data.settings;
-  const terms = s.estimateTerms
+  const days = kind === "invoice" ? s.paymentTermsDays : s.estimateValidDays;
+  const terms = ((kind === "invoice" ? s.invoiceTerms : s.estimateTerms) ?? "")
     .split("\n")
     .map((x) => x.trim())
     .filter(Boolean)
-    .map((x) => x.replace(/\{days\}/g, String(s.estimateValidDays)).replace(/\{agency\}/g, s.agencyName));
+    .map((x) => x.replace(/\{days\}/g, String(days)).replace(/\{agency\}/g, s.agencyName));
   const bank: [string, string][] = (
     [
       ["Account Name", s.bankAccountName],
@@ -115,7 +116,18 @@ export function EstimateFooter() {
 }
 
 /** Printable production estimate (A4 portrait), laid out like the agency's existing format. */
-export default function ProductionEstimate({ est }: { est: Estimate }) {
+/** "Est No." / "Invoice No." and the title for each kind of sheet. */
+export const sheetLabels = (kind: SheetKind, media: boolean) =>
+  kind === "invoice"
+    ? { title: "TAX INVOICE", no: "Invoice No. :" }
+    : { title: media ? "MEDIA ESTIMATE" : "ESTIMATE", no: "Est No. :" };
+
+/** Due date of an invoice (estimates have none). */
+export const dueDateOf = (d: SheetDoc) => ("dueDate" in d ? d.dueDate : "");
+export const isPaid = (d: SheetDoc) => "paidDate" in d && d.status === "paid";
+
+export default function ProductionEstimate({ est, kind = "estimate" }: { est: SheetDoc; kind?: SheetKind }) {
+  const labels = sheetLabels(kind, false);
   const { data } = useStore();
   const s = data.settings;
   const client = data.clients.find((c) => c.id === est.clientId);
@@ -123,15 +135,17 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
   const fmt = docFormat(est.country, s);
   const product = est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" ") || est.title || "";
   return (
-    <article className="pe-doc print-area" aria-label={`Estimate ${est.number}`}>
+    <article className="pe-doc print-area" aria-label={`${kind === "invoice" ? "Invoice" : "Estimate"} ${est.number}`}>
       <Letterhead />
 
-      <h1 className="pe-title">ESTIMATE</h1>
+      <h1 className="pe-title">{labels.title}</h1>
+      {isPaid(est) && <div className="pe-paid">PAID</div>}
 
       <div className="pe-meta">
         <dl className="pe-meta-left">
-          <dt>Est No. :</dt><dd><strong>{est.number || "—"}</strong></dd>
+          <dt>{labels.no}</dt><dd><strong>{est.number || "—"}</strong></dd>
           <dt>Date :</dt><dd><strong>{dmy(est.issueDate)}</strong></dd>
+          {kind === "invoice" && <><dt>Due Date :</dt><dd className="span3">{dmy(dueDateOf(est))}</dd></>}
           <dt>Job No. :</dt><dd>{job?.number ?? ""}</dd>
           <dt>Date :</dt><dd>{dmy(job?.startDate ?? "")}</dd>
           <dt>Job Type :</dt><dd className="span3">{est.jobType ?? ""}</dd>
@@ -176,13 +190,13 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
 
       <SignatureBlock />
 
-      <EstimateFooter />
+      <EstimateFooter kind={kind} />
     </article>
   );
 }
 
 /** Totals with amount in words: Total, discount, SGST/CGST or IGST, round off, grand total. */
-export function EstimateTotals({ est }: { est: Estimate }) {
+export function EstimateTotals({ est }: { est: SheetDoc }) {
   const { data } = useStore();
   const s = data.settings;
   const client = data.clients.find((c) => c.id === est.clientId);
