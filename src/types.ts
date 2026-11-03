@@ -116,6 +116,7 @@ export interface Project {
   id: ID;
   number?: string; // JOB-0001 or the agency's own (e.g. HLL26100417); missing on jobs made before numbering
   jobType?: string; // e.g. Brochure Printing; carried onto the job's estimates
+  category?: EstimateType; // Creative, Production, Media… (the tabs); carried onto its estimates
   clientId: ID;
   contactPerson?: string;
   product?: string;

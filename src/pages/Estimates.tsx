@@ -6,7 +6,7 @@ import { addDays, docFormat, financialYear, fmtDate, invoiceTotals, money, today
 import MediaEstimate from "../components/MediaEstimate";
 import ProductionEstimate from "../components/ProductionEstimate";
 import SheetForm from "../components/SheetForm";
-import { estimateType, typeInfo } from "../lib/doctype";
+import { estimateType, jobCategory, typeInfo } from "../lib/doctype";
 import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
@@ -51,7 +51,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     const issue = today();
     return {
       id: uid(),
-      type: typeTab === "all" ? "project" : (typeTab as EstimateType),
+      // From a job: its category; from a tab: that type.
+      type: job ? jobCategory(job, data.estimates) : typeTab === "all" ? "project" : (typeTab as EstimateType),
       number: "", // assigned on first save
       title: job?.name ?? "",
       jobType: job?.jobType ?? "",
