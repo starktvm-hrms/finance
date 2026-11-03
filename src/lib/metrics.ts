@@ -70,7 +70,9 @@ export function workflowQueues(data: AppData) {
   const quoted = new Set(data.estimates.filter((e) => e.status !== "rejected" && e.projectId).map((e) => e.projectId));
   const sum = (xs: Invoice[] | AppData["estimates"]) => xs.reduce((s, x) => s + invoiceTotals(x).total, 0);
   const jobsForEstimate = data.projects.filter((p) => p.status === "lead" && !quoted.has(p.id));
-  const estimatesForApproval = data.estimates.filter((e) => e.status === "sent");
+  const isMedia = (e: AppData["estimates"][number]) => (e.type ?? "project") === "media";
+  const estimatesForApproval = data.estimates.filter((e) => e.status === "sent" && !isMedia(e));
+  const mediaForApproval = data.estimates.filter((e) => e.status === "sent" && isMedia(e));
   const invoiceToRaise = data.estimates.filter((e) => e.status === "approved");
   const invoiceToCollect = data.invoices.filter((i) => i.status === "sent");
   return {
@@ -79,6 +81,8 @@ export function workflowQueues(data: AppData) {
     invoiceToRaise,
     invoiceToCollect,
     approvalValue: sum(estimatesForApproval),
+    mediaForApproval,
+    mediaApprovalValue: sum(mediaForApproval),
     toRaiseValue: sum(invoiceToRaise),
     toCollectValue: sum(invoiceToCollect),
   };

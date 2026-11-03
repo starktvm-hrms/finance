@@ -107,6 +107,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     return FILTERS.some((x) => x.id === f) ? (f as EstimateStatus) : "all";
   });
   const [q, setQ] = useState("");
+  // From the dashboard's "Estimates · For approval" tile: everything except media.
+  const [noMedia, setNoMedia] = useState(params.get("kind") === "production");
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const row = tabsRef.current;
@@ -132,13 +134,16 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   const rows = useMemo(
     () =>
       data.estimates
-        .filter((e) => (typeTab === "all" || estimateType(e) === typeTab) && (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((e) => (!noMedia || estimateType(e) !== "media") && (typeTab === "all" || estimateType(e) === typeTab) && (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.estimates, data.clients, data.projects, filter, q, typeTab], // eslint-disable-line react-hooks/exhaustive-deps
+    [data.estimates, data.clients, data.projects, filter, q, typeTab, noMedia], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const save = (e: Estimate) => {
-    if (isNew(e) && !e.number) {
+    e = { ...e, number: e.number.trim() };
+    const clash = e.number && data.estimates.find((x) => x.id !== e.id && x.number.toLowerCase() === e.number.toLowerCase());
+    if (clash && !window.confirm(`Estimate No. ${e.number} is already used by "${clash.title || clientName(clash.clientId)}". Save anyway?`)) return;
+    if (!e.number) {
       // PE/26-27/369 for production estimates, ME/26-27/370 for media estimates
       const prefix = estimateType(e) === "media" ? s.mediaEstimatePrefix : s.productionEstimatePrefix;
       e = { ...e, number: `${prefix}/${financialYear(e.issueDate)}/${s.nextEstimateNumber}` };
@@ -215,6 +220,12 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
           </button>
         ))}
       </div>
+      {noMedia && typeTab === "all" && (
+        <div className="row gap">
+          <span className="badge badge-info">Excluding media estimates</span>
+          <button className="btn ghost" onClick={() => setNoMedia(false)}>Show all</button>
+        </div>
+      )}
       <PageHeader
         level={2}
         title={typeTab === "all" ? "All estimates" : `${tabInfo.label} estimates`}
@@ -368,7 +379,15 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
           <div className="pe-meta">
             <dl className="pe-meta-left">
               <dt>Est No. :</dt>
-              <dd><span className="pe-auto" title="Given when you save">{est.number || previewNo}</span></dd>
+              <dd>
+                <input
+                  aria-label="Estimate number"
+                  value={est.number}
+                  onChange={(e) => set({ number: e.target.value })}
+                  placeholder={`${previewNo} (auto)`}
+                  title="Leave blank to get the next number in the series"
+                />
+              </dd>
               <dt>Date :</dt>
               <dd><input required type="date" aria-label="Estimate date" value={est.issueDate} onChange={(e) => set({ issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></dd>
               <dt>Job No. :</dt>
