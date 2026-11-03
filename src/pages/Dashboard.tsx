@@ -26,7 +26,8 @@ export default function Dashboard() {
   const w = workflowQueues(data);
   const tiles: { title: string; sub: string; count: number; hint: string; page: PageId; params: Record<string, string> }[] = [
     { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" } },
-    { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} awaiting the client's decision`, page: "estimates", params: { status: "sent" } },
+    { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} in production and other estimates awaiting the client's decision`, page: "estimates", params: { status: "sent", kind: "production" } },
+    { title: "Media Estimates", sub: "For approval", count: w.mediaForApproval.length, hint: `${fm(w.mediaApprovalValue)} in media estimates awaiting the client's decision`, page: "estimates", params: { type: "media", status: "sent" } },
     { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" } },
     { title: "Invoice", sub: "To collect", count: w.invoiceToCollect.length, hint: `${fm(w.toCollectValue)} sent, not yet paid`, page: "invoices", params: { status: "unpaid" } },
   ];
