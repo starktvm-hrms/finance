@@ -34,9 +34,13 @@ export default function Projects({ params }: { params: URLSearchParams }) {
   });
 
   const saveJob = (job: Project, sendForApproval: boolean, head: string) => {
-    const isNew = !data.projects.some((p) => p.id === job.id);
     let next: Project = { ...job, name: job.name.trim(), product: job.product?.trim(), subProduct: job.subProduct?.trim() };
-    if (isNew) {
+    next.number = next.number?.trim() || undefined;
+    const clash = next.number && data.projects.find((p) => p.id !== job.id && p.number?.toLowerCase() === next.number!.toLowerCase());
+    if (clash && !window.confirm(`Job No. ${next.number} is already used by "${clash.name}". Save anyway?`)) return;
+    next.jobType = next.jobType?.trim() || undefined;
+    if (!next.number) {
+      // No number typed: give the next one in the series.
       next.number = `${s.jobPrefix}${String(s.nextJobNumber).padStart(4, "0")}`;
       updateSettings({ nextJobNumber: s.nextJobNumber + 1 });
     }
@@ -96,7 +100,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Job</th><th>Status</th><th>Estimate</th><th className="num">Budget</th><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th><th /></tr>
+              <tr><th>Job No.</th><th>Job</th><th>Type</th><th>Status</th><th>Estimate</th><th className="num">Budget</th><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -104,12 +108,14 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                 const pct = p.budget ? Math.min(100, Math.round((f.invoiced / p.budget) * 100)) : 0;
                 return (
                   <tr key={p.id} className="clickable" onClick={() => setEdit(p)}>
+                    <td className="nowrap">{p.number ?? <span className="muted">—</span>}</td>
                     <td>
                       <strong>{p.name}</strong>
                       <div className="muted small">
-                        {[p.number, clientName(p.clientId), [p.product, p.subProduct].filter(Boolean).join(" › "), fmtDate(p.startDate, s.locale)].filter(Boolean).join(" · ")}
+                        {[clientName(p.clientId), [p.product, p.subProduct].filter(Boolean).join(" › "), fmtDate(p.startDate, s.locale)].filter(Boolean).join(" · ")}
                       </div>
                     </td>
+                    <td>{p.jobType ?? <span className="muted">—</span>}</td>
                     <td onClick={(e) => p.approval?.status === "pending" && e.stopPropagation()}>
                       <Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge>
                       {p.approval && (
@@ -163,6 +169,11 @@ export default function Projects({ params }: { params: URLSearchParams }) {
   );
 }
 
+const COMMON_JOB_TYPES = [
+  "Brochure Printing", "Creative Design", "Video Production", "Photo Shoot", "Media Buying",
+  "Event", "Social Media", "Website", "Outdoor", "Retainer",
+];
+
 function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew: boolean; onSave: (p: Project, sendForApproval: boolean, head: string) => void; onCancel: () => void }) {
   const { data } = useStore();
   const s = data.settings;
@@ -175,6 +186,12 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
   const contacts = [client?.contactName, ...data.projects.filter((p) => p.clientId === job.clientId).map((p) => p.contactPerson)]
     .filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
   const heads = s.departmentHeads.filter(Boolean);
+  const nextNo = `${s.jobPrefix}${String(s.nextJobNumber).padStart(4, "0")}`;
+  const typeSuggestions = [
+    ...new Set(
+      [...data.projects.map((p) => p.jobType), ...data.estimates.map((e) => e.jobType), ...COMMON_JOB_TYPES].filter((x): x is string => !!x),
+    ),
+  ].sort();
 
   return (
     <Modal title={isNew ? "Add Job" : `Edit job ${job.number ?? ""}`} onClose={onCancel}>
@@ -196,6 +213,13 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
         <Field label="Sub-product *" span={2}>
           <input required list="job-subproducts" disabled={!job.product?.trim()} value={job.subProduct ?? ""} onChange={(e) => setJob({ ...job, subProduct: e.target.value })} placeholder={job.product?.trim() ? "Select or type a new sub-product" : "Choose a product first"} />
           <datalist id="job-subproducts">{subProducts.map((p) => <option key={p} value={p} />)}</datalist>
+        </Field>
+        <Field label="Job No." span={2}>
+          <input value={job.number ?? ""} onChange={(e) => setJob({ ...job, number: e.target.value })} placeholder={`${nextNo} (given when you save)`} />
+        </Field>
+        <Field label="Type" span={2}>
+          <input list="job-type-list" value={job.jobType ?? ""} onChange={(e) => setJob({ ...job, jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
+          <datalist id="job-type-list">{typeSuggestions.map((t) => <option key={t} value={t} />)}</datalist>
         </Field>
         <Field label="Title *" span={2}><input required value={job.name} onChange={(e) => setJob({ ...job, name: e.target.value })} placeholder="Enter title of the work" /></Field>
         <Field label="Description" span={2}><textarea rows={3} value={job.notes} onChange={(e) => setJob({ ...job, notes: e.target.value })} placeholder="Enter description" /></Field>

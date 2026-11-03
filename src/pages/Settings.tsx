@@ -1,6 +1,9 @@
 import { useRef, useState, type FormEvent } from "react";
 import type { AppData } from "../types";
 import { useStore } from "../lib/store";
+import { logoSrc } from "../lib/brand";
+import { TEST_MARK, fillTestTaxIds, numberJobs, removeTestTaxIds, typeJobs } from "../lib/testdata";
+import { gstState } from "../lib/util";
 import { emptyData, sampleData } from "../lib/seed";
 import { readBrowserData } from "../lib/adapter";
 import { downloadFile, today } from "../lib/util";
@@ -11,7 +14,17 @@ const CURRENCIES = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateSettings, replaceAll, storageName, shared, auth, user, changePassword } = useStore();
+  const { data, updateSettings, replaceAll, upsert, storageName, shared, auth, user, changePassword } = useStore();
+  const [toolMsg, setToolMsg] = useState("");
+  const state = gstState(data.settings.taxId, data.settings.stateCode).replace("00", "32");
+  const missingTax = data.clients.filter((c) => !c.taxId?.trim() || !c.pan?.trim()).length;
+  const testClients = data.clients.filter((c) => c.notes?.includes(TEST_MARK)).length;
+  const unnumbered = data.projects.filter((p) => !p.number?.trim()).length;
+  const untyped = data.projects.filter((p) => !p.jobType?.trim()).length;
+  const runTool = (label: string, fn: () => number) => {
+    const n = fn();
+    setToolMsg(`${label}: ${n} updated.`);
+  };
   const [pw, setPw] = useState({ current: "", next: "", repeat: "" });
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const submitPassword = async (e: FormEvent) => {
@@ -70,11 +83,18 @@ export default function SettingsPage() {
           <div className="field span2">
             <span>Logo (shown on estimates and invoices)</span>
             <div className="row gap wrap">
-              {s.logo ? <img className="logo-preview" src={s.logo} alt="Agency logo" /> : <span className="muted small">No logo yet</span>}
-              <button type="button" className="btn" onClick={() => logoInput.current?.click()}>{s.logo ? "Change logo…" : "Upload logo…"}</button>
-              {s.logo && <button type="button" className="btn ghost danger" onClick={() => updateSettings({ logo: "" })}>Remove</button>}
+              <img className="logo-preview" src={logoSrc(s)} alt="Agency logo" />
+              {!s.logo && <span className="muted small">Default logo</span>}
+              <button type="button" className="btn" onClick={() => logoInput.current?.click()}>Upload a different logo…</button>
+              {s.logo && <button type="button" className="btn ghost" onClick={() => updateSettings({ logo: "", logoIncludesName: true })}>Use the default logo</button>}
               <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
             </div>
+            {s.logo && (
+              <label className="check small">
+                <input type="checkbox" checked={s.logoIncludesName !== false} onChange={(e) => updateSettings({ logoIncludesName: e.target.checked })} />
+                This logo already shows the agency name (don't print the name next to it)
+              </label>
+            )}
           </div>
           <Field label="Agency name"><input value={s.agencyName} onChange={(e) => updateSettings({ agencyName: e.target.value })} /></Field>
           <Field label="Billing email"><input type="email" value={s.agencyEmail} onChange={(e) => updateSettings({ agencyEmail: e.target.value })} /></Field>
@@ -152,6 +172,32 @@ export default function SettingsPage() {
           <p className="muted small">To add or remove people, run on the server: <code>sudo -u agency-finance python3 /var/www/finance.starkpeople.in/_api/api.py add-user NAME</code></p>
         </div>
       )}
+
+      <div className="card">
+        <h3>Test data &amp; tidy-up</h3>
+        <p className="muted">For trying things out. Test GSTIN and PAN numbers follow the real format (state {state}) but are made up; clients that get them are marked “{TEST_MARK}” in their notes and can be cleared again.</p>
+        <div className="row gap wrap">
+          <button className="btn" disabled={!missingTax} onClick={() =>
+            window.confirm(`Add test GSTIN and PAN to ${missingTax} client(s) that don't have them?`) &&
+            runTool("Test GSTIN & PAN", () => { const cs = fillTestTaxIds(data, state); cs.forEach((c) => upsert("clients", c)); return cs.length; })}>
+            Fill test GSTIN &amp; PAN ({missingTax})
+          </button>
+          <button className="btn" disabled={!testClients} onClick={() =>
+            window.confirm(`Remove the test GSTIN and PAN from ${testClients} client(s)?`) &&
+            runTool("Test GSTIN & PAN removed", () => { const cs = removeTestTaxIds(data, state); cs.forEach((c) => upsert("clients", c)); return cs.length; })}>
+            Remove test GSTIN &amp; PAN ({testClients})
+          </button>
+          <button className="btn" disabled={!unnumbered} onClick={() =>
+            runTool("Job numbers", () => { const { jobs, next } = numberJobs(data); jobs.forEach((j) => upsert("projects", j)); updateSettings({ nextJobNumber: next }); return jobs.length; })}>
+            Number jobs without a Job No. ({unnumbered})
+          </button>
+          <button className="btn" disabled={!untyped} onClick={() =>
+            runTool("Job types", () => { const jobs = typeJobs(data); jobs.forEach((j) => upsert("projects", j)); return jobs.length; })}>
+            Set Type on jobs without one ({untyped})
+          </button>
+        </div>
+        {toolMsg && <p className="good small" role="status">{toolMsg}</p>}
+      </div>
 
       <div className="card">
         <h3>Data</h3>

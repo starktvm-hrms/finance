@@ -33,6 +33,11 @@ default, and can sync to your website's backend when you're ready.
   spend this year and in total; expenses link to a vendor when the payee name matches.
 - **Settings** — agency details for invoices, currency (INR default), tax rate,
   invoice prefix, JSON backup/restore, sample data.
+- **Logo** — the Stark Communications logo (`public/brand-logo.png`, round mark in
+  `public/brand-mark.png`) is the default on the letterhead, estimates, invoices, sign-in page,
+  sidebar and browser tab; uploading another in Settings replaces it.
+- **Test data & tidy-up** (Settings) — fill valid-format test GSTIN/PAN for clients missing them
+  (marked in notes, removable), number jobs without a Job No., set Type on jobs without one.
 - Responsive (works on phones) and supports light/dark mode.
 
 ## Getting started

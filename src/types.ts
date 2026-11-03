@@ -17,7 +17,8 @@ export interface Settings {
   jobPrefix: string;
   nextJobNumber: number;
   departmentHeads: string[]; // people who can approve new jobs
-  logo: string; // small data-URL image shown on estimates and invoices ("" = none)
+  logo: string; // uploaded data-URL logo ("" = the logo shipped with the app)
+  logoIncludesName?: boolean; // uploaded logo already shows the agency name (default true)
   // Letterhead (printed on estimates)
   agencyPhone: string;
   agencyFax: string;
@@ -109,7 +110,8 @@ export interface JobApproval {
 /** A job (shown as "Jobs"; named Project in code). `name` is the job title. */
 export interface Project {
   id: ID;
-  number?: string; // JOB-0001; missing on jobs made before numbering
+  number?: string; // JOB-0001 or the agency's own (e.g. HLL26100417); missing on jobs made before numbering
+  jobType?: string; // e.g. Brochure Printing; carried onto the job's estimates
   clientId: ID;
   contactPerson?: string;
   product?: string;

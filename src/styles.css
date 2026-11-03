@@ -81,7 +81,7 @@ textarea { resize: vertical; }
   display: flex; flex-direction: column; padding: 16px 12px; position: sticky; top: 0; height: 100vh;
 }
 .brand { display: flex; gap: 10px; align-items: center; padding: 4px 8px 20px; }
-.logo { width: 34px; height: 34px; border-radius: 9px; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 700; }
+.logo { width: 34px; height: 34px; border-radius: 9px; background: #fff; padding: 3px; object-fit: contain; box-shadow: inset 0 0 0 1px var(--border); }
 .brand-name { font-weight: 600; line-height: 1.2; }
 .brand-sub { font-size: 12px; color: var(--muted); }
 nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; flex: 1; margin: 0 -4px; padding: 0 4px; }
@@ -241,8 +241,9 @@ input.num { text-align: right; }
 .rte-loading { border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-height: 160px; }
 .rte-view.ql-editor { padding: 0; min-height: 0; height: auto; overflow: visible; white-space: normal; }
 .doc-logo { max-height: 56px; max-width: 200px; object-fit: contain; display: block; margin-bottom: 6px; }
+.doc-logo.full { max-height: 30px; max-width: 360px; margin-bottom: 10px; }
 .doc-heading { font-size: 16px; margin: 0; }
-.logo-preview { max-height: 48px; max-width: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff; }
+.logo-preview { max-height: 40px; max-width: 320px; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff; }
 
 /* Production estimate (printed A4 portrait; always paper white) */
 .pe-doc {
@@ -252,6 +253,7 @@ input.num { text-align: right; }
 .pe-letterhead { margin-bottom: 26px; }
 .pe-brand { display: flex; align-items: center; gap: 14px; }
 .pe-brand img { max-height: 46px; max-width: 160px; object-fit: contain; }
+.pe-brand.full img { max-height: 46px; max-width: 470px; }
 .pe-brand span { letter-spacing: 0.32em; text-transform: uppercase; font-style: italic; font-size: 15px; color: #222; }
 .pe-address { color: #777; font-size: 10px; margin: 14px 0 0; white-space: pre-wrap; line-height: 1.7; letter-spacing: -0.005em; }
 .pe-title { text-align: center; font-size: 21px; letter-spacing: 0.02em; margin: 18px 0 10px; color: var(--ink); }
@@ -367,7 +369,8 @@ input.num { text-align: right; }
 .login-brand-top { display: flex; align-items: center; gap: 12px; }
 .login-mark { width: 40px; height: 40px; border-radius: 10px; background: rgba(255, 255, 255, 0.16); display: grid; place-items: center; font-weight: 700; font-size: 18px; }
 .login-logo { background: #fff; border-radius: 10px; padding: 6px 10px; display: inline-flex; }
-.login-logo img { max-height: 36px; max-width: 160px; object-fit: contain; display: block; }
+.login-logo { padding: 10px 14px; }
+.login-logo img { max-height: 28px; max-width: min(360px, 70vw); object-fit: contain; display: block; }
 .login-name { font-weight: 600; font-size: 16px; }
 .login-pitch h2 { font-size: 34px; line-height: 1.15; margin: 0 0 28px; font-weight: 650; max-width: 14ch; letter-spacing: -0.01em; }
 .login-pitch ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 18px; max-width: 420px; }
