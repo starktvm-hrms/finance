@@ -11,6 +11,9 @@
 #   nginx site file for finance.starkpeople.in    sites-available + symlink, or conf.d
 #   /etc/nginx/finance.starkpeople.in.htpasswd    login for the app (HTTP basic auth)
 #   /etc/cron.d/finance-starkpeople               pulls new builds every 5 minutes
+#   /etc/systemd/system/agency-finance.service    storage API (python3, 127.0.0.1 only)
+#   /var/lib/agency-finance/                      the data + 30 days of daily backups
+#   system user `agency-finance`                  runs the API with no other access
 #   a Let's Encrypt certificate for this subdomain only (if certbot is installed)
 #
 # Safe to re-run: it only rewrites its own files. If nginx rejects the new
@@ -23,6 +26,10 @@ BRANCH="${BRANCH:-deploy}"
 WEBROOT="/var/www/${DOMAIN}"
 HTPASSWD="/etc/nginx/${DOMAIN}.htpasswd"
 CRON_FILE="/etc/cron.d/finance-starkpeople"
+SERVICE="agency-finance"
+SERVICE_FILE="/etc/systemd/system/${SERVICE}.service"
+DATA_DIR="/var/lib/agency-finance"
+API_PORT="${FINANCE_PORT:-8791}"
 
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -31,6 +38,8 @@ fail() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 command -v nginx >/dev/null || fail "nginx is not installed on this server."
 command -v git >/dev/null || fail "git is not installed. Install it with: apt-get install -y git"
 command -v openssl >/dev/null || fail "openssl is not installed."
+command -v python3 >/dev/null || fail "python3 is not installed. Install it with: apt-get install -y python3"
+command -v systemctl >/dev/null || fail "systemd is required."
 
 # Where this server keeps its nginx sites.
 if [ -d /etc/nginx/sites-enabled ] && grep -Rqs "sites-enabled" /etc/nginx/nginx.conf; then
@@ -92,7 +101,50 @@ else
   say "Keeping existing login file ${HTPASSWD}"
 fi
 
-# 3. nginx site (HTTP first; certbot adds HTTPS below)
+# 3. Storage API (runs as its own unprivileged user, listens on localhost only)
+[ -f "${WEBROOT}/_api/api.py" ] || fail "storage API missing from the build (${WEBROOT}/_api/api.py)."
+if ss -ltnH "sport = :${API_PORT}" 2>/dev/null | grep -q . && ! systemctl is-active -q "$SERVICE"; then
+  fail "port ${API_PORT} is already used by another program. Re-run with FINANCE_PORT=<free port>."
+fi
+id -u "$SERVICE" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SERVICE"
+install -d -m 750 -o "$SERVICE" -g "$SERVICE" "$DATA_DIR"
+say "Writing ${SERVICE_FILE}"
+cat > "$SERVICE_FILE" <<UNIT
+# Agency Finance storage API, added by deploy/vps-setup.sh
+[Unit]
+Description=Agency Finance storage API (${DOMAIN})
+After=network.target
+
+[Service]
+User=${SERVICE}
+Group=${SERVICE}
+Environment=FINANCE_DATA_DIR=${DATA_DIR}
+Environment=FINANCE_PORT=${API_PORT}
+ExecStart=/usr/bin/env python3 ${WEBROOT}/_api/api.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=${DATA_DIR}
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable -q "$SERVICE"
+systemctl restart "$SERVICE"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 && break
+  sleep 1
+done
+curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 \
+  || fail "the storage API did not start. See: journalctl -u ${SERVICE} -n 50"
+say "Storage API running (data in ${DATA_DIR})"
+
+# 4. nginx site (HTTP first; certbot adds HTTPS below)
 say "Writing ${SITE_FILE}"
 HAD_SITE_FILE=0; [ -f "$SITE_FILE" ] && HAD_SITE_FILE=1
 [ "$HAD_SITE_FILE" -eq 1 ] && grep -q "managed by Certbot" "$SITE_FILE" && SKIP_WRITE=1 || SKIP_WRITE=0
@@ -141,15 +193,43 @@ else
 fi
 [ -n "$SITE_LINK" ] && ln -sfn "$SITE_FILE" "$SITE_LINK"
 
+# 5. Route /api/ to the storage API (inserted into OUR site file only, once)
+SITE_BACKUP=""
+if ! grep -q "# finance-api" "$SITE_FILE"; then
+  SITE_BACKUP=$(mktemp)
+  cp "$SITE_FILE" "$SITE_BACKUP"
+  python3 - "$SITE_FILE" "$API_PORT" <<'PY'
+import sys
+path, port = sys.argv[1], sys.argv[2]
+block = f"""    # finance-api: storage API (server/api.py), behind the same login
+    location ^~ /_api/ {{ return 404; }}
+    location /api/ {{
+        proxy_pass http://127.0.0.1:{port}/;
+        proxy_set_header Host $host;
+        client_max_body_size 10m;
+        proxy_read_timeout 30s;
+    }}
+
+"""
+src = open(path).read()
+anchor = "    location / {"
+if anchor not in src:
+    sys.exit("could not find 'location / {' in " + path)
+open(path, "w").write(src.replace(anchor, block + anchor))
+PY
+  say "Added /api/ route to ${SITE_FILE}"
+fi
+
 if ! nginx -t 2>/tmp/finance-nginx-test.log; then
   cat /tmp/finance-nginx-test.log >&2
-  if [ "$HAD_SITE_FILE" -eq 0 ]; then rm -f "$SITE_FILE"; [ -n "$SITE_LINK" ] && rm -f "$SITE_LINK"; fi
+  if [ "$HAD_SITE_FILE" -eq 0 ]; then rm -f "$SITE_FILE"; [ -n "$SITE_LINK" ] && rm -f "$SITE_LINK"
+  elif [ -n "$SITE_BACKUP" ]; then cp "$SITE_BACKUP" "$SITE_FILE"; fi
   fail "nginx rejected the configuration; the new site file was removed and nginx was not reloaded."
 fi
 systemctl reload nginx
 say "nginx reloaded"
 
-# 4. HTTPS for this subdomain only
+# 6. HTTPS for this subdomain only
 if command -v certbot >/dev/null; then
   say "Requesting an SSL certificate for ${DOMAIN}"
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect \
@@ -160,10 +240,10 @@ else
   echo "  To add HTTPS:  apt-get install -y certbot python3-certbot-nginx && re-run this script"
 fi
 
-# 5. Auto-update: pull new builds published by GitHub Actions
+# 7. Auto-update: pull new builds published by GitHub Actions
 cat > "$CRON_FILE" <<CRON
-# Agency Finance: pull the latest build every 5 minutes (added by deploy/vps-setup.sh)
-*/5 * * * * root git -C ${WEBROOT} fetch -q --depth 1 origin ${BRANCH} && git -C ${WEBROOT} reset -q --hard origin/${BRANCH}
+# Agency Finance: pull the latest build every 5 minutes and restart the API if it changed (added by deploy/vps-setup.sh)
+*/5 * * * * root cd ${WEBROOT} && old=\$(git rev-parse HEAD) && git fetch -q --depth 1 origin ${BRANCH} && git reset -q --hard origin/${BRANCH} && new=\$(git rev-parse HEAD) && if [ "\$old" != "\$new" ] && ! git diff --quiet "\$old" "\$new" -- _api; then systemctl restart ${SERVICE}; fi
 CRON
 chmod 644 "$CRON_FILE"
 

@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import type { Invoice, InvoiceStatus } from "../types";
 import { useStore } from "../lib/store";
+import { clearParam } from "../lib/route";
 import { addDays, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
+import { DocumentView, ItemsEditor, Totals, newLine } from "../components/Doc";
 
 const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -12,16 +14,29 @@ const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
   cancelled: { label: "Cancelled", tone: "muted" },
 };
 
-export default function Invoices() {
+/** "unpaid" = sent + overdue: everything still to collect. */
+type Filter = DisplayStatus | "all" | "unpaid";
+const FILTERS: Filter[] = ["all", "draft", "unpaid", "overdue", "paid", "cancelled"];
+const matches = (f: Filter, st: DisplayStatus) => f === "all" || f === st || (f === "unpaid" && (st === "sent" || st === "overdue"));
+
+export default function Invoices({ params }: { params: URLSearchParams }) {
   const { data, upsert, remove, updateSettings } = useStore();
   const s = data.settings;
   const [edit, setEdit] = useState<Invoice | null>(null);
-  const [view, setView] = useState<Invoice | null>(null);
-  const [filter, setFilter] = useState<DisplayStatus | "all">("all");
+  const [view, setView] = useState<Invoice | null>(() => {
+    const id = params.get("open");
+    if (id) clearParam("open");
+    return data.invoices.find((i) => i.id === id) ?? null;
+  });
+  const [filter, setFilter] = useState<Filter>(() => {
+    const f = params.get("status") as Filter | null;
+    return f && FILTERS.includes(f) ? f : "all";
+  });
   const [q, setQ] = useState("");
 
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const isNew = (inv: Invoice) => !data.invoices.some((i) => i.id === inv.id);
+  const fromEstimate = (inv: Invoice) => data.estimates.find((e) => e.invoiceId === inv.id);
 
   const blank = (): Invoice => {
     const issue = today();
@@ -33,7 +48,7 @@ export default function Invoices() {
       issueDate: issue,
       dueDate: addDays(issue, s.paymentTermsDays),
       status: "draft",
-      items: [{ id: uid(), description: "", quantity: 1, rate: 0 }],
+      items: [newLine()],
       taxRate: s.defaultTaxRate,
       discount: 0,
       notes: "",
@@ -45,12 +60,12 @@ export default function Invoices() {
   const rows = useMemo(
     () =>
       data.invoices
-        .filter((i) => (filter === "all" || invoiceDisplayStatus(i) === filter) && `${i.number} ${clientName(i.clientId)}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((i) => matches(filter, invoiceDisplayStatus(i)) && `${i.number} ${clientName(i.clientId)}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.invoices, data.clients, filter, q],
+    [data.invoices, data.clients, filter, q], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const counts = data.invoices.reduce<Record<string, number>>((acc, i) => ((acc[invoiceDisplayStatus(i)] = (acc[invoiceDisplayStatus(i)] || 0) + 1), acc), {});
+  const count = (f: Filter) => data.invoices.filter((i) => matches(f, invoiceDisplayStatus(i))).length;
 
   const save = (inv: Invoice) => {
     if (isNew(inv)) updateSettings({ nextInvoiceNumber: s.nextInvoiceNumber + 1 });
@@ -71,11 +86,13 @@ export default function Invoices() {
       "text/csv",
     );
 
+  const label = (f: Filter) => (f === "all" ? "All" : f === "unpaid" ? "To collect" : STATUS[f].label);
+
   return (
     <div className="page">
       <PageHeader
         title="Invoices"
-        subtitle="Create, send and track client invoices."
+        subtitle="Raise, send and collect client invoices."
         actions={
           <>
             <button className="btn" onClick={exportCSV} disabled={!rows.length}>Export CSV</button>
@@ -85,10 +102,10 @@ export default function Invoices() {
       />
       <div className="filters">
         <div className="tabs">
-          {(["all", "draft", "sent", "overdue", "paid", "cancelled"] as const).map((k) => (
+          {FILTERS.map((k) => (
             <button key={k} className={`tab ${filter === k ? "active" : ""}`} onClick={() => setFilter(k)}>
-              {k === "all" ? "All" : STATUS[k].label}
-              <span className="tab-count">{k === "all" ? data.invoices.length : counts[k] || 0}</span>
+              {label(k)}
+              <span className="tab-count">{count(k)}</span>
             </button>
           ))}
         </div>
@@ -131,13 +148,26 @@ export default function Invoices() {
 
       {view && (
         <Modal title={`Invoice ${view.number}`} onClose={() => setView(null)} wide>
-          <InvoiceDocument inv={view} />
+          <DocumentView
+            title="INVOICE"
+            number={view.number}
+            clientId={view.clientId}
+            projectId={view.projectId}
+            dates={[["Issued", view.issueDate], ["Due", view.dueDate]]}
+            badge={view.status === "paid" && <Badge tone="good">Paid {fmtDate(view.paidDate, s.locale)}</Badge>}
+            doc={view}
+            notes={view.notes}
+            totalLabel="Total due"
+          />
+          {fromEstimate(view) && <p className="muted small no-print">Raised from estimate {fromEstimate(view)!.number}.</p>}
           <div className="form-actions no-print">
             <button
               className="btn ghost danger"
               onClick={() => {
                 if (confirmDelete(`invoice ${view.number}`)) {
                   remove("invoices", view.id);
+                  const est = fromEstimate(view);
+                  if (est) upsert("estimates", { ...est, status: "approved", invoiceId: "" }); // back to "to raise"
                   setView(null);
                 }
               }}
@@ -162,10 +192,7 @@ function InvoiceEditor({ initial, isNew, onSave, onCancel }: { initial: Invoice;
   const { data } = useStore();
   const s = data.settings;
   const [inv, setInv] = useState(initial);
-  const t = invoiceTotals(inv);
   const projects = data.projects.filter((p) => p.clientId === inv.clientId);
-  const setItem = (id: string, patch: Partial<Invoice["items"][number]>) =>
-    setInv({ ...inv, items: inv.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
 
   return (
     <Modal title={isNew ? "New invoice" : `Edit ${inv.number}`} onClose={onCancel} wide>
@@ -181,7 +208,7 @@ function InvoiceEditor({ initial, isNew, onSave, onCancel }: { initial: Invoice;
             {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        <Field label="Project (optional)">
+        <Field label="Job (optional)">
           <select value={inv.projectId} onChange={(e) => setInv({ ...inv, projectId: e.target.value })}>
             <option value="">—</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -191,86 +218,18 @@ function InvoiceEditor({ initial, isNew, onSave, onCancel }: { initial: Invoice;
         <Field label="Due date"><input required type="date" value={inv.dueDate} onChange={(e) => setInv({ ...inv, dueDate: e.target.value })} /></Field>
         {inv.status === "paid" && <Field label="Paid on"><input type="date" value={inv.paidDate} onChange={(e) => setInv({ ...inv, paidDate: e.target.value })} /></Field>}
 
-        <div className="span2 items">
-          <div className="items-head"><span>Description</span><span>Qty</span><span>Rate</span><span className="num">Amount</span><span /></div>
-          {inv.items.map((it) => (
-            <div className="items-row" key={it.id}>
-              <input required placeholder="Service or deliverable" value={it.description} onChange={(e) => setItem(it.id, { description: e.target.value })} aria-label="Description" />
-              <input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(it.id, { quantity: Number(e.target.value) })} aria-label="Quantity" />
-              <input type="number" min={0} step="0.01" value={it.rate || ""} onChange={(e) => setItem(it.id, { rate: Number(e.target.value) })} aria-label="Rate" />
-              <span className="num">{money(it.quantity * it.rate, s)}</span>
-              <button type="button" className="icon-btn" disabled={inv.items.length === 1} onClick={() => setInv({ ...inv, items: inv.items.filter((x) => x.id !== it.id) })} aria-label="Remove line">×</button>
-            </div>
-          ))}
-          <button type="button" className="btn ghost" onClick={() => setInv({ ...inv, items: [...inv.items, { id: uid(), description: "", quantity: 1, rate: 0 }] })}>+ Add line</button>
-        </div>
+        <ItemsEditor items={inv.items} onChange={(items) => setInv({ ...inv, items })} settings={s} />
 
         <Field label={`Discount (${s.currency})`}><input type="number" min={0} step="0.01" value={inv.discount || ""} onChange={(e) => setInv({ ...inv, discount: Number(e.target.value) })} /></Field>
         <Field label="Tax rate (%)"><input type="number" min={0} step="0.01" value={inv.taxRate} onChange={(e) => setInv({ ...inv, taxRate: Number(e.target.value) })} /></Field>
         <Field label="Notes / payment instructions" span={2}><textarea rows={2} value={inv.notes} onChange={(e) => setInv({ ...inv, notes: e.target.value })} /></Field>
 
-        <div className="totals span2">
-          <div><span>Subtotal</span><span>{money(t.subtotal, s)}</span></div>
-          {t.discount > 0 && <div><span>Discount</span><span>− {money(t.discount, s)}</span></div>}
-          <div><span>Tax ({inv.taxRate}%)</span><span>{money(t.tax, s)}</span></div>
-          <div className="grand"><span>Total</span><span>{money(t.total, s)}</span></div>
-        </div>
+        <Totals doc={inv} settings={s} className="span2" />
         <div className="form-actions span2">
           <button type="button" className="btn" onClick={onCancel}>Cancel</button>
           <button className="btn primary">Save invoice</button>
         </div>
       </form>
     </Modal>
-  );
-}
-
-function InvoiceDocument({ inv }: { inv: Invoice }) {
-  const { data } = useStore();
-  const s = data.settings;
-  const client = data.clients.find((c) => c.id === inv.clientId);
-  const project = data.projects.find((p) => p.id === inv.projectId);
-  const t = invoiceTotals(inv);
-  return (
-    <div className="invoice-doc print-area">
-      <div className="row between top">
-        <div>
-          <div className="doc-agency">{s.agencyName}</div>
-          <div className="muted pre">{s.agencyAddress}</div>
-          <div className="muted">{s.agencyEmail}</div>
-          {s.taxId && <div className="muted">Tax ID: {s.taxId}</div>}
-        </div>
-        <div className="right">
-          <div className="doc-title">INVOICE</div>
-          <div><strong>{inv.number}</strong></div>
-          <div className="muted">Issued {fmtDate(inv.issueDate, s.locale)}</div>
-          <div className="muted">Due {fmtDate(inv.dueDate, s.locale)}</div>
-          {inv.status === "paid" && <Badge tone="good">Paid {fmtDate(inv.paidDate, s.locale)}</Badge>}
-        </div>
-      </div>
-      <div className="doc-bill">
-        <div className="muted small">BILL TO</div>
-        <strong>{client?.name}</strong>
-        {client?.contactName && <div>{client.contactName}</div>}
-        {client?.address && <div className="pre">{client.address}</div>}
-        {client?.email && <div>{client.email}</div>}
-        {client?.taxId && <div>Tax ID: {client.taxId}</div>}
-        {project && <div className="muted small">Project: {project.name}</div>}
-      </div>
-      <table className="table doc-table">
-        <thead><tr><th>Description</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
-        <tbody>
-          {inv.items.map((it) => (
-            <tr key={it.id}><td>{it.description}</td><td className="num">{it.quantity}</td><td className="num">{money(it.rate, s)}</td><td className="num">{money(it.quantity * it.rate, s)}</td></tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="totals">
-        <div><span>Subtotal</span><span>{money(t.subtotal, s)}</span></div>
-        {t.discount > 0 && <div><span>Discount</span><span>− {money(t.discount, s)}</span></div>}
-        <div><span>Tax ({inv.taxRate}%)</span><span>{money(t.tax, s)}</span></div>
-        <div className="grand"><span>Total due</span><span>{money(t.total, s)}</span></div>
-      </div>
-      {inv.notes && <div className="doc-notes pre">{inv.notes}</div>}
-    </div>
   );
 }

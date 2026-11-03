@@ -2,6 +2,7 @@ import { useRef } from "react";
 import type { AppData } from "../types";
 import { useStore } from "../lib/store";
 import { emptyData, sampleData } from "../lib/seed";
+import { readBrowserData } from "../lib/adapter";
 import { downloadFile, today } from "../lib/util";
 import { Field, PageHeader } from "../components/ui";
 
@@ -10,9 +11,13 @@ const CURRENCIES = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateSettings, replaceAll, storageName } = useStore();
+  const { data, updateSettings, replaceAll, storageName, shared } = useStore();
   const s = data.settings;
   const file = useRef<HTMLInputElement>(null);
+  const browserData = shared ? readBrowserData() : null;
+  const browserCounts = browserData
+    ? `${browserData.invoices.length} invoices, ${browserData.expenses.length} expenses, ${browserData.clients.length} clients`
+    : "";
 
   const importJSON = async (f: File) => {
     try {
@@ -39,7 +44,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
-        <h3>Invoicing</h3>
+        <h3>Invoices & estimates</h3>
         <div className="form">
           <Field label="Currency">
             <select
@@ -53,18 +58,39 @@ export default function SettingsPage() {
           <Field label="Invoice prefix"><input value={s.invoicePrefix} onChange={(e) => updateSettings({ invoicePrefix: e.target.value })} /></Field>
           <Field label="Next invoice number"><input type="number" min={1} value={s.nextInvoiceNumber} onChange={(e) => updateSettings({ nextInvoiceNumber: Number(e.target.value) })} /></Field>
           <Field label="Payment terms (days)"><input type="number" min={0} value={s.paymentTermsDays} onChange={(e) => updateSettings({ paymentTermsDays: Number(e.target.value) })} /></Field>
+          <div />
+          <Field label="Estimate prefix"><input value={s.estimatePrefix} onChange={(e) => updateSettings({ estimatePrefix: e.target.value })} /></Field>
+          <Field label="Next estimate number"><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
+          <Field label="Estimates valid for (days)"><input type="number" min={1} value={s.estimateValidDays} onChange={(e) => updateSettings({ estimateValidDays: Number(e.target.value) })} /></Field>
         </div>
       </div>
 
       <div className="card">
         <h3>Data</h3>
-        <p className="muted">Currently stored in: <strong>{storageName}</strong>. Back up regularly — browser storage is per-device.</p>
+        <p className="muted">
+          Stored in: <strong>{storageName}</strong>.{" "}
+          {shared
+            ? "Everyone who signs in sees the same data. The server keeps daily backups for 30 days."
+            : "Browser storage is per-device; download backups regularly."}
+        </p>
         <div className="row gap wrap">
           <button className="btn" onClick={() => downloadFile(`agency-finance-backup-${today()}.json`, JSON.stringify(data, null, 2), "application/json")}>Download backup (JSON)</button>
           <button className="btn" onClick={() => file.current?.click()}>Restore from backup…</button>
           <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && importJSON(e.target.files[0])} />
+          {browserData && (
+            <button
+              className="btn"
+              title="Data saved in this browser before server storage was turned on"
+              onClick={() =>
+                window.confirm(`Replace the server data with the data saved in this browser (${browserCounts})? Download a backup first if unsure.`) &&
+                replaceAll({ ...emptyData(), ...browserData, settings: { ...emptyData().settings, ...browserData.settings } })
+              }
+            >
+              Use data saved in this browser…
+            </button>
+          )}
           <button className="btn" onClick={() => window.confirm("Replace current data with sample data?") && replaceAll(sampleData())}>Load sample data</button>
-          <button className="btn danger" onClick={() => window.confirm("Erase all clients, projects, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1 } })}>
+          <button className="btn danger" onClick={() => window.confirm("Erase all clients, jobs, estimates, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 } })}>
             Clear all data
           </button>
         </div>

@@ -33,20 +33,25 @@ to start fresh, and fill in your agency details.
 
 ## Data storage
 
-By default everything is saved in the browser's `localStorage` (per device/browser).
-Use **Settings → Download backup** regularly, or connect a backend (below) so the team
-shares one dataset.
+- **Live site (finance.starkpeople.in):** data is stored **on the server** in
+  `/var/lib/agency-finance/data.json`, served by a small Python API (`server/api.py`,
+  standard library only) behind the site's login. Everyone who signs in sees the same
+  data; other people's changes show up within about 20 seconds. A dated backup is kept
+  for each day the data changes (last 30 days) in `/var/lib/agency-finance/backups/`.
+- **Local development (`npm run dev`):** data is stored in the browser, with sample data.
 
-All reads/writes go through one small interface in `src/lib/adapter.ts`:
+The app sends small change operations (`src/lib/ops.ts`, mirrored in `server/api.py`)
+instead of the whole dataset, so two people editing at once don't overwrite each other.
+When the server is empty, the first browser to open the app uploads whatever it had
+saved locally; **Settings → Use data saved in this browser** does the same later.
 
-```ts
-interface DataAdapter {
-  load(): Promise<AppData | null>;
-  save(data: AppData): Promise<void>;
-}
+Restore a server backup:
+
+```bash
+sudo systemctl stop agency-finance
+sudo cp /var/lib/agency-finance/backups/data-YYYY-MM-DD.json /var/lib/agency-finance/data.json
+sudo systemctl start agency-finance
 ```
-
-so changing where data lives never touches the UI.
 
 ## Connecting to your website
 
@@ -67,37 +72,31 @@ hash-based routing (`#/invoices`), no server rewrite rules are needed.
 > ⚠️ This is internal financial data. Put the app behind a login — e.g. your website's
 > admin area, HTTP basic auth, or Cloudflare Access — rather than a public URL.
 
-### 2. Sync data to your backend
+### 2. Storage API
 
-Set `VITE_API_URL` (see `.env.example`) to an endpoint that:
+Build with `VITE_API_URL=/api` and proxy `/api/` to `server/api.py`
+(`FINANCE_DATA_DIR`, `FINANCE_PORT` env vars; default port 8791). Put the API behind the
+same login as the app: it has no authentication of its own and listens on 127.0.0.1 only.
 
-| Method | Behaviour |
-| ------ | --------- |
-| `GET`  | returns the full dataset JSON (`AppData` in `src/types.ts`), or `404` if none yet |
-| `PUT`  | receives the full dataset JSON and stores it, returns `2xx` |
+| Request | Response |
+| ------- | -------- |
+| `GET /data[?since=REV]` | `{"rev": n, "data": AppData \| null}` or `{"unchanged": true}` |
+| `POST /ops` `{"ops": [...]}` (JSON) | `{"rev": n}`; ops are `upsert`, `remove`, `settings`, `replace` |
+| `GET /health` | `{"ok": true, "rev": n}` |
 
-Optional `VITE_API_TOKEN` is sent as `Authorization: Bearer <token>`.
-
-A dependency-free reference implementation is in `server/index.mjs`:
+To develop against it locally:
 
 ```bash
-API_TOKEN=change-me node server/index.mjs     # listens on :8787
-cp .env.example .env    # then set VITE_API_URL=http://localhost:8787
-npm run dev
+FINANCE_DATA_DIR=./.data python3 server/api.py
+VITE_API_URL=/api npm run dev     # vite proxies /api to 127.0.0.1:8791
 ```
-
-You can implement the same two endpoints in whatever your website already runs
-(PHP/WordPress, Node, Django, Laravel, Supabase edge function…). For multi-user setups
-with per-user permissions, the next step is moving from one JSON document to proper
-tables (`clients`, `projects`, `invoices`, `expenses`) — the types in `src/types.ts`
-map 1:1 to those tables.
 
 ## Live deployment (finance.starkpeople.in)
 
 The app runs on the existing nginx VPS next to the other starkpeople.in sites.
 
 1. Every push to `main` runs `.github/workflows/build-deploy.yml`, which builds the app
-   and publishes `dist/` to the `deploy` branch.
+   and publishes `dist/` (plus the storage API) to the `deploy` branch.
 2. One-time server setup — run as root in hPanel → VPS → Browser terminal:
 
    ```bash
@@ -110,9 +109,10 @@ The app runs on the existing nginx VPS next to the other starkpeople.in sites.
    read -rp "Username: " U; read -rsp "Password: " P; echo; printf '%s:%s\n' "$U" "$(openssl passwd -apr1 "$P")" > /etc/nginx/finance.starkpeople.in.htpasswd; unset P
    ```
 
-   It only adds files for this subdomain (web root, nginx site file, login file, cron
-   entry, SSL certificate); existing sites and configs are not edited. It asks for a
-   username and password that protect the app.
+   It only adds things for this subdomain (web root, nginx site file, login file, cron
+   entry, SSL certificate, the `agency-finance` storage service and its data folder);
+   existing sites and configs are not edited. It asks for a username and password that
+   protect the app. Re-running it is safe and is how server-side changes are applied.
 3. After that the server pulls new builds every 5 minutes — just push to `main`.
 
 DNS: `finance` is a CNAME to `starkpeople.in` (same as `meet`).
@@ -129,6 +129,6 @@ src/
   lib/seed.ts         defaults and sample data
   pages/              Dashboard, Invoices, Expenses, Projects, Clients, Settings
   components/ui.tsx   modal, fields, badges, stat cards
-server/index.mjs      optional reference API
+server/api.py         storage API (Python standard library)
 deploy/vps-setup.sh   one-time VPS setup for finance.starkpeople.in
 ```

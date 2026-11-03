@@ -1,61 +1,92 @@
 import type { AppData } from "../types";
+import { applyOp, type Op } from "./ops";
+
+export interface Snapshot {
+  data: AppData | null; // null = nothing stored yet
+  rev: number;
+}
 
 /**
- * Storage adapter. The app reads/writes its whole dataset through this
- * interface, so swapping localStorage for a backend (Supabase, your website's
- * REST API, etc.) means implementing these two methods — no UI changes.
+ * Where the data lives. The app loads a snapshot, then sends batches of ops.
+ * `load(rev)` may return null when nothing changed since `rev`.
  */
 export interface DataAdapter {
   name: string;
-  load(): Promise<AppData | null>;
-  save(data: AppData): Promise<void>;
+  shared: boolean; // true when other people/devices see the same data
+  load(sinceRev?: number): Promise<Snapshot | null>;
+  apply(ops: Op[]): Promise<number>; // returns the new revision
 }
 
 const KEY = "agency-finance:data:v1";
 
+export function readBrowserData(): AppData | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? (JSON.parse(raw) as AppData) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const localAdapter: DataAdapter = {
-  name: "Browser storage",
+  name: "This browser",
+  shared: false,
   async load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      return raw ? (JSON.parse(raw) as AppData) : null;
-    } catch {
-      return null;
-    }
+    return { data: readBrowserData(), rev: 0 };
   },
-  async save(data) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error("Failed to save data", e);
+  async apply(ops) {
+    let d = readBrowserData();
+    for (const o of ops) {
+      if (o.op === "replace") d = o.data;
+      else if (d) d = applyOp(d, o);
     }
+    if (d) localStorage.setItem(KEY, JSON.stringify(d));
+    return 0;
   },
 };
 
 /**
- * Generic REST adapter: GET returns the AppData JSON, PUT stores it.
- * Enable by setting VITE_API_URL (e.g. https://youragency.com/api/finance).
+ * Server storage (server/api.py). Same origin as the app, so the site's login
+ * (HTTP basic auth) protects it and the browser sends credentials automatically.
  */
-export function restAdapter(baseUrl: string, token?: string): DataAdapter {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+export function serverAdapter(base: string): DataAdapter {
+  const url = base.replace(/\/$/, "");
+  const check = async (res: Response) => {
+    if (res.status === 401) throw new Error("Not signed in. Reload the page and log in again.");
+    if (!res.ok) {
+      let msg = `${res.status}`;
+      try {
+        msg = (await res.json()).error ?? msg;
+      } catch {
+        /* not JSON */
+      }
+      throw new Error(`Server error: ${msg}`);
+    }
+    return res.json();
+  };
   return {
-    name: "Remote API",
-    async load() {
-      const res = await fetch(baseUrl, { headers });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`Load failed: ${res.status}`);
-      return (await res.json()) as AppData;
+    name: "Server",
+    shared: true,
+    async load(sinceRev) {
+      const q = sinceRev ? `?since=${sinceRev}` : "";
+      const body = await check(await fetch(`${url}/data${q}`, { cache: "no-store", credentials: "same-origin" }));
+      return body.unchanged ? null : (body as Snapshot);
     },
-    async save(data) {
-      const res = await fetch(baseUrl, { method: "PUT", headers, body: JSON.stringify(data) });
-      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+    async apply(ops) {
+      const body = await check(
+        await fetch(`${url}/ops`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ops }),
+        }),
+      );
+      return body.rev as number;
     },
   };
 }
 
 export function getAdapter(): DataAdapter {
   const api = import.meta.env.VITE_API_URL as string | undefined;
-  if (api) return restAdapter(api, import.meta.env.VITE_API_TOKEN as string | undefined);
-  return localAdapter;
+  return api ? serverAdapter(api) : localAdapter;
 }

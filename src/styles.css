@@ -89,7 +89,10 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item:hover { background: var(--hover); color: var(--text); }
 .nav-item.active { background: var(--hover); color: var(--text); font-weight: 600; }
 .nav-icon { width: 18px; text-align: center; }
-.sidebar-foot { margin-top: auto; font-size: 12px; padding: 8px; }
+.sidebar-foot { margin-top: auto; font-size: 12px; padding: 8px; display: flex; align-items: center; gap: 6px; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+.sync-dot.saving, .sync-dot.loading { background: var(--warn); }
+.sync-dot.error { background: var(--bad); }
 .main { flex: 1; min-width: 0; }
 .topbar { display: none; }
 .page { padding: 28px 32px 48px; max-width: 1200px; display: flex; flex-direction: column; gap: 16px; }
@@ -103,6 +106,21 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .stat-label { color: var(--muted); font-size: 13px; }
 .stat-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 24px; font-weight: 650; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
 .stat-hint { color: var(--muted); font-size: 12px; }
+/* Work-queue tiles (dashboard) */
+.queues { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.queue {
+  display: flex; flex-direction: column; align-items: stretch; text-align: left; cursor: pointer;
+  min-height: 148px; padding: 18px; font: inherit; color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.queue:hover { border-color: var(--primary); }
+.queue:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.queue-title { font-size: 13px; color: var(--muted); }
+.queue-sub { font-size: 13px; font-weight: 600; color: var(--primary); margin-top: 2px; }
+.queue-count { font-size: 24px; font-weight: 650; text-align: right; margin-top: auto; padding-top: 10px; color: var(--text); font-variant-numeric: tabular-nums; }
+.page-head + .queues { margin-top: -4px; }
+.queues + .page-head { margin-top: 12px; }
+
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .span-2 { grid-column: span 2; }
 .chart { height: 300px; }
@@ -183,7 +201,8 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* Mobile */
 .scrim { display: none; }
 @media (max-width: 960px) {
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats, .queues { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .queue { min-height: 120px; }
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
   .span-2 { grid-column: auto; }
 }
@@ -198,6 +217,9 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   .stats { gap: 10px; }
   .stat-value { font-size: 17px; }
   .stat { padding: 14px; }
+  .queues { gap: 10px; }
+  .queue { min-height: 108px; padding: 14px; }
+  .queue-count { font-size: 20px; }
   .form { grid-template-columns: minmax(0, 1fr); }
   .form > div:empty { display: none; }
   .items-head { display: none; }
