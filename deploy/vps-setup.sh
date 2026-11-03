@@ -2,7 +2,9 @@
 # One-time setup of finance.starkpeople.in on an existing nginx VPS.
 #
 # Run as root (e.g. in hPanel → VPS → Browser terminal):
-#   curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh
+#
+# Non-interactive: FINANCE_USER=admin FINANCE_PASS='...' bash vps-setup.sh
 #
 # What it ADDS (nothing existing is edited or removed):
 #   /var/www/finance.starkpeople.in/              the built app (a checkout of the `deploy` branch)
@@ -58,13 +60,29 @@ fi
 
 # 2. Login (financial data should not be public)
 if [ ! -s "$HTPASSWD" ]; then
-  say "Create a login for ${DOMAIN}"
-  read -rp "  Username: " AUTH_USER </dev/tty
-  while :; do
-    read -rsp "  Password (min 10 chars): " AUTH_PASS </dev/tty; echo
-    [ "${#AUTH_PASS}" -ge 10 ] && break
-    echo "  Too short, try again."
-  done
+  # Credentials can come from FINANCE_USER / FINANCE_PASS, or are asked for.
+  # Some web terminals (e.g. hPanel's) have no usable /dev/tty when the script
+  # is piped from curl, so fall back to stdin when it is a terminal.
+  AUTH_USER="${FINANCE_USER:-}"
+  AUTH_PASS="${FINANCE_PASS:-}"
+  if [ -z "$AUTH_USER" ] || [ -z "$AUTH_PASS" ]; then
+    if [ -t 0 ]; then TTY=/dev/stdin
+    elif ( : </dev/tty ) 2>/dev/null && [ -t 1 ]; then TTY=/dev/tty
+    else
+      fail "no terminal to ask for a login. Either download and run the script:
+    curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh
+  or create ${HTPASSWD} first and re-run (see the README)."
+    fi
+    say "Create a login for ${DOMAIN}"
+    read -rp "  Username: " AUTH_USER <"$TTY" || fail "could not read input; see the README for the manual login step."
+    while :; do
+      read -rsp "  Password (min 10 chars): " AUTH_PASS <"$TTY" || fail "could not read input."
+      echo
+      [ "${#AUTH_PASS}" -ge 10 ] && break
+      echo "  Too short, try again."
+    done
+  fi
+  [ -n "$AUTH_USER" ] || fail "username must not be empty."
   printf '%s:%s\n' "$AUTH_USER" "$(openssl passwd -apr1 "$AUTH_PASS")" > "$HTPASSWD"
   unset AUTH_PASS
   chmod 640 "$HTPASSWD"

@@ -101,7 +101,13 @@ The app runs on the existing nginx VPS next to the other starkpeople.in sites.
 2. One-time server setup — run as root in hPanel → VPS → Browser terminal:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh
+   ```
+
+   If a terminal can't prompt, create the login yourself first and re-run the script:
+
+   ```bash
+   read -rp "Username: " U; read -rsp "Password: " P; echo; printf '%s:%s\n' "$U" "$(openssl passwd -apr1 "$P")" > /etc/nginx/finance.starkpeople.in.htpasswd; unset P
    ```
 
    It only adds files for this subdomain (web root, nginx site file, login file, cron
