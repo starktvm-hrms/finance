@@ -28,11 +28,11 @@ export function Field({ label, children, span }: { label: string; children: Reac
   );
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, level = 1 }: { title: string; subtitle?: string; actions?: ReactNode; level?: 1 | 2 }) {
   return (
-    <div className="page-head">
+    <div className={`page-head ${level === 2 ? "section-head" : ""}`}>
       <div>
-        <h1>{title}</h1>
+        {level === 2 ? <h2>{title}</h2> : <h1>{title}</h1>}
         {subtitle && <p className="muted">{subtitle}</p>}
       </div>
       <div className="row gap">{actions}</div>

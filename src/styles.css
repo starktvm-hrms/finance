@@ -89,14 +89,9 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .nav-item:hover { background: var(--hover); color: var(--text); }
 .nav-item.active { background: var(--hover); color: var(--text); font-weight: 600; }
 .nav-icon { width: 18px; text-align: center; }
-.nav-group { margin-top: 6px; }
-.nav-chevron { margin-left: auto; font-size: 16px; line-height: 1; transition: transform 0.15s; }
-.nav-chevron.open { transform: rotate(90deg); }
-.nav-sub { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; }
-.nav-subitem { padding: 7px 10px 7px 14px; }
-.nav-bullet { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid currentColor; flex-shrink: 0; margin: 0 4px 0 1px; }
-.nav-subitem.active { color: var(--primary); }
-.nav-subitem.active .nav-bullet { background: currentColor; }
+.section-head h2 { font-size: 17px; }
+.tab-panel { display: flex; flex-direction: column; gap: 16px; }
+.directory-tabs { align-self: flex-start; position: relative; scrollbar-width: thin; }
 .sidebar-foot { margin-top: auto; font-size: 12px; padding: 8px; display: flex; align-items: center; gap: 6px; }
 .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
 .sync-dot.saving, .sync-dot.loading { background: var(--warn); }

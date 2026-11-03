@@ -32,8 +32,9 @@ export default function Clients() {
   };
 
   return (
-    <div className="page">
+    <div className="tab-panel">
       <PageHeader
+        level={2}
         title="Clients"
         subtitle={`${data.clients.length} clients`}
         actions={
