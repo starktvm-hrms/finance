@@ -3,6 +3,7 @@ import Directory from "./pages/Directory";
 import Login from "./pages/Login";
 import People from "./pages/People";
 import ProfileMenu from "./components/ProfileMenu";
+import NotificationBell from "./components/NotificationBell";
 import { BRAND_MARK } from "./lib/brand";
 import { areaOfPage, pageAllowed } from "./lib/access";
 import { useStore } from "./lib/store";
@@ -27,7 +28,8 @@ const PAGES: { id: PageId; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const { ready, error, data, storageName, sync, auth, user, signOut, access, can } = useStore();
+  const { ready, error, data, storageName, sync, auth, user, signOut, access, can, legacy } = useStore();
+  const hasAccount = auth === "signed-in" || legacy;
   const allowedPages = PAGES.filter((p) => can(areaOfPage(p.id)));
   const { page, params } = useRoute();
   // Landing on the dashboard without access to it: open the first page this role has.
@@ -69,10 +71,10 @@ export default function App() {
           <span className={`sync-dot ${sync}`} />
           {sync === "saving" ? "Saving…" : sync === "error" ? "Not saved – retrying" : sync === "loading" ? "Loading…" : `Saved · ${storageName}`}
         </div>
-        {auth === "signed-in" && (
+        {hasAccount && (
           <div className="sidebar-user">
-            <span className="who" title={`Signed in as ${user} (${access.roleName})`}>
-              {user}
+            <span className="who" title={`Signed in as ${user ?? "Admin"} (${access.roleName})`}>
+              {user ?? "Admin"}
               <span className="muted small"> · {access.roleName}</span>
             </span>
             <button className="btn ghost" onClick={signOut}>Sign out</button>
@@ -81,10 +83,10 @@ export default function App() {
       </aside>
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <main className="main">
-        <div className={`topbar ${auth === "signed-in" ? "" : "no-profile"}`}>
+        <div className={`topbar ${hasAccount ? "" : "no-profile"}`}>
           <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
           <span className="topbar-title">{pageLabel}</span>
-          {auth === "signed-in" && <ProfileMenu />}
+          {hasAccount && <span className="topbar-end">{ready && <NotificationBell />}<ProfileMenu /></span>}
         </div>
         {error && (
           <div className="alert">

@@ -113,6 +113,11 @@ export default function Access() {
                   <td className="actions" onClick={(e) => e.stopPropagation()}>
                     <button className="btn ghost" onClick={() => setEdit({ ...l, password: "", create: false })}>Edit</button>
                     {l.username !== user && (
+                      <button className="btn ghost" title="End their sessions on every device" onClick={() => window.confirm(`Sign ${l.username} out on every device?`) && run(() => api.signOutLogin(l.username), `${l.username} has been signed out everywhere.`)}>
+                        Sign out
+                      </button>
+                    )}
+                    {l.username !== user && (
                       <button className="btn ghost danger" onClick={() => window.confirm(`Delete the login ${l.username}? They will be signed out.`) && run(() => api.deleteLogin(l.username), `Deleted ${l.username}.`)}>
                         Delete
                       </button>

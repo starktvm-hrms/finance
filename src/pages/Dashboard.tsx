@@ -4,6 +4,7 @@ import { useStore } from "../lib/store";
 import { computeMetrics, workflowQueues } from "../lib/metrics";
 import { go, type PageId } from "../lib/route";
 import { jobsByPerson, scopeInfo, scopeParams, scopedData } from "../lib/scope";
+import { notifications } from "../lib/notifications";
 import { fmtDate, invoiceTotals, money, monthLabel, shortMoney, today } from "../lib/util";
 import { Badge, Empty, PageHeader, Stat } from "../components/ui";
 import { PROJECT_STATUS } from "./Projects";
@@ -18,7 +19,12 @@ const RANGES = [
 ];
 
 export default function Dashboard() {
-  const { data: all, can, access, user } = useStore();
+  const { data: all, can, access, user, myName, upsert, legacy } = useStore();
+  const waiting = notifications(all, access, user, myName).filter((n) => n.needsAction);
+  const decide = (jobId: string, status: "approved" | "rejected") => {
+    const p = all.projects.find((x) => x.id === jobId);
+    if (p?.approval) upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today(), decidedBy: myName, decidedAt: new Date().toISOString() } });
+  };
   const s = all.settings;
   const [months, setMonths] = useState(6);
   // Department heads see their department, account executives their own work, others everything.
@@ -60,6 +66,36 @@ export default function Dashboard() {
     <div className="page">
       <PageHeader title="Dashboard" subtitle={access.admin ? undefined : `${access.roleName} · ${info.label}`} />
       {info.problem && <div className="alert">{info.problem}</div>}
+      {legacy && (
+        <div className="card approvals-card">
+          <h3>Switch to the app's own sign-in page</h3>
+          <p className="small">
+            This site still uses the browser's pop-up login, so the sign-in page, signing out, roles and the demo logins aren't active yet.
+            Run this once in the server's terminal (hPanel › VPS › Browser terminal). It keeps your current username and password:
+          </p>
+          <pre className="cmd">curl -fsSL https://raw.githubusercontent.com/starktvm-hrms/finance/main/deploy/vps-setup.sh -o /tmp/finance-setup.sh && sudo bash /tmp/finance-setup.sh</pre>
+        </div>
+      )}
+      {waiting.length > 0 && (
+        <div className="card approvals-card">
+          <h3>Waiting for your approval ({waiting.length})</h3>
+          <ul>
+            {waiting.map((n) => (
+              <li key={n.id}>
+                <button className="btn ghost" style={{ textAlign: "left", whiteSpace: "normal" }} onClick={() => go("job", { id: n.jobId })}>
+                  <strong>{n.body}</strong><div className="muted small">{n.title}</div>
+                </button>
+                {can("jobs") && (
+                  <span className="row gap">
+                    <button className="btn good-fill" onClick={() => decide(n.jobId, "approved")}>Approve</button>
+                    <button className="btn danger" onClick={() => decide(n.jobId, "rejected")}>Reject</button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {tiles.length > 0 && <div className="queues" role="list" aria-label="Work queues">
         {tiles.map((t) => (

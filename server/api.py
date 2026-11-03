@@ -593,6 +593,12 @@ class Handler(BaseHTTPRequestHandler):
                     if pw and existing:
                         end_session(None, name)  # password reset signs them out everywhere
                     return self.send(200, {"ok": True})
+                if path == "/admin/users/logout":
+                    name = str(body.get("username", ""))
+                    if name not in u:
+                        raise BadRequest("No such login.")
+                    end_session(None, name)
+                    return self.send(200, {"ok": True})
                 if path == "/admin/users/delete":
                     name = str(body.get("username", ""))
                     if name == me:
