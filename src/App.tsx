@@ -23,7 +23,7 @@ const fromHash = (): PageId => {
 };
 
 export default function App() {
-  const { ready, error, data, storageName } = useStore();
+  const { ready, error, data, storageName, sync } = useStore();
   const [page, setPage] = useState<PageId>(fromHash);
   const [navOpen, setNavOpen] = useState(false);
 
@@ -56,7 +56,10 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot muted">Storage: {storageName}</div>
+        <div className="sidebar-foot muted">
+          <span className={`sync-dot ${sync}`} />
+          {sync === "saving" ? "Saving…" : sync === "error" ? "Not saved – retrying" : sync === "loading" ? "Loading…" : `Saved · ${storageName}`}
+        </div>
       </aside>
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <main className="main">
@@ -64,7 +67,7 @@ export default function App() {
           <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
           <span className="topbar-title">{PAGES.find((p) => p.id === page)?.label}</span>
         </div>
-        {error && <div className="alert">Sync problem: {error}</div>}
+        {error && <div className="alert">Changes are not being saved: {error}. Keep this tab open; it retries automatically.</div>}
         {!ready ? (
           <div className="empty">Loading…</div>
         ) : (

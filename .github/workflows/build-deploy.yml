@@ -1,5 +1,5 @@
 # Builds the app on every push to main and publishes the static files
-# (dist/) to the `deploy` branch. The VPS pulls that branch (see deploy/vps-setup.sh),
+# (dist/, plus the storage API in dist/_api/) to the `deploy` branch. The VPS pulls that branch (see deploy/vps-setup.sh),
 # so the server never needs Node.js and GitHub needs no SSH access to the server.
 name: Build and publish
 
@@ -28,6 +28,11 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_API_URL: /api   # store data on the server (server/api.py)
+
+      - name: Add the storage API to the published files
+        run: mkdir -p dist/_api && cp server/api.py dist/_api/api.py
 
       - name: Publish dist/ to the deploy branch
         run: |

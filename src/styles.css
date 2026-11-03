@@ -89,7 +89,10 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item:hover { background: var(--hover); color: var(--text); }
 .nav-item.active { background: var(--hover); color: var(--text); font-weight: 600; }
 .nav-icon { width: 18px; text-align: center; }
-.sidebar-foot { margin-top: auto; font-size: 12px; padding: 8px; }
+.sidebar-foot { margin-top: auto; font-size: 12px; padding: 8px; display: flex; align-items: center; gap: 6px; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+.sync-dot.saving, .sync-dot.loading { background: var(--warn); }
+.sync-dot.error { background: var(--bad); }
 .main { flex: 1; min-width: 0; }
 .topbar { display: none; }
 .page { padding: 28px 32px 48px; max-width: 1200px; display: flex; flex-direction: column; gap: 16px; }
