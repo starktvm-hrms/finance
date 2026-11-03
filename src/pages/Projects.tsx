@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ESTIMATE_TYPES, type EstimateType, type Project, type ProjectStatus } from "../types";
+import { ESTIMATE_TYPES, type AppData, type Employee, type EstimateType, type Project, type ProjectStatus } from "../types";
 import { useStore } from "../lib/store";
 import { needsEstimate, projectFinancials } from "../lib/metrics";
 import { makeJobNumber } from "../lib/jobno";
@@ -18,6 +18,12 @@ export const PROJECT_STATUS: Record<ProjectStatus, { label: string; tone: string
   completed: { label: "Completed", tone: "good" },
   cancelled: { label: "Cancelled", tone: "bad" },
 };
+
+/** How a department head is shown in the approval list: "Meera Pillai (Media)". */
+export function headLabel(data: AppData, e: Employee) {
+  const d = data.departments.find((x) => x.id === e.departmentId)?.name;
+  return d ? `${e.name} (${d})` : e.name;
+}
 
 type JobFilter = ProjectStatus | "all" | "needs_estimate";
 
@@ -69,7 +75,8 @@ export default function Projects({ params }: { params: URLSearchParams }) {
       updateSettings({ nextJobNumber: s.nextJobNumber + 1 });
     }
     if (sendForApproval && head && (next.approval?.head !== head || next.approval?.status === "rejected")) {
-      next.approval = { head, status: "pending", decidedDate: "", askedBy: myName, askedAt: new Date().toISOString() };
+      const headEmp = data.employees.find((e) => e.isHead && headLabel(data, e) === head);
+      next.approval = { head, ...(headEmp && { headId: headEmp.id }), status: "pending", decidedDate: "", askedBy: myName, askedAt: new Date().toISOString() };
     } else if (!sendForApproval) {
       next = { ...next, approval: undefined };
     }
@@ -243,7 +250,7 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
     ...new Set([
       ...data.employees
         .filter((e) => e.isHead && e.active)
-        .map((e) => { const d = data.departments.find((x) => x.id === e.departmentId)?.name; return d ? `${e.name} (${d})` : e.name; }),
+        .map((e) => headLabel(data, e)),
       ...s.departmentHeads.filter(Boolean),
     ]),
   ];

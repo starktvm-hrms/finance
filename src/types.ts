@@ -140,6 +140,7 @@ export type ProjectStatus = "lead" | "active" | "on_hold" | "completed" | "cance
 
 export interface JobApproval {
   head: string; // department head asked to approve
+  headId?: ID; // their employee record (their login gets the notification)
   status: "pending" | "approved" | "rejected";
   decidedDate: string;
   askedBy?: string; // name of the person who asked (shown in the job's timeline)

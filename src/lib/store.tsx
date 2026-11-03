@@ -47,6 +47,8 @@ interface Store {
   can(area: string): boolean;
   /** Name shown for the signed-in person in timelines ("Anu Thomas", else the login, else "Admin"). */
   myName: string;
+  /** The server is still behind its own browser pop-up login (no app sign-in). */
+  legacy: boolean;
   /** Fetch the latest data from the server now (after uploads etc.). */
   refresh(): void;
   signIn(username: string, password: string, remember: boolean): Promise<void>;
@@ -249,7 +251,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     };
     pollRef.current = poll;
-    const t = window.setInterval(() => !document.hidden && poll(), POLL_MS);
+    // Background tabs check less often, but still check, so approval alerts reach people.
+    let tick = 0;
+    const t = window.setInterval(() => (!document.hidden || ++tick % 3 === 0) && poll(), POLL_MS);
     const onFocus = () => poll();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
@@ -304,6 +308,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (queue.current.length && !window.confirm("Some changes have not been saved yet. Sign out anyway?")) return;
+    if (auth === "off" && adapter.auth) {
+      // Still behind the server's browser pop-up login: replace the remembered
+      // password with a wrong one so the browser asks again, then reload.
+      await fetch("api/health", { headers: { Authorization: `Basic ${btoa("signed-out:x")}` }, cache: "no-store" }).catch(() => undefined);
+      window.location.replace(`${window.location.pathname}?signed-out=${Date.now()}`);
+      return;
+    }
     await adapter.auth?.logout().catch(() => undefined);
     // Forget the data in this tab (shared computers).
     queue.current = [];
@@ -313,14 +324,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setReady(false);
     setUser(null);
     setAuth("signed-out");
-  }, []);
+  }, [auth]);
 
   const changePassword = useCallback(async (current: string, next: string) => {
     await adapter.auth!.changePassword(current, next);
   }, []);
 
   return (
-    <Ctx.Provider value={{ myName: data.employees.find((e) => e.id === access.employeeId)?.name ?? user ?? "Admin", refresh: () => { rev.current = 0; window.setTimeout(() => pollRef.current(), 0); }, data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, access, can: (area: string) => access.admin || access.areas.includes(area), signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
+    <Ctx.Provider value={{ legacy: auth === "off" && !!adapter.auth, myName: data.employees.find((e) => e.id === access.employeeId)?.name ?? user ?? "Admin", refresh: () => { rev.current = 0; window.setTimeout(() => pollRef.current(), 0); }, data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, access, can: (area: string) => access.admin || access.areas.includes(area), signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
       {children}
     </Ctx.Provider>
   );

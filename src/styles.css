@@ -101,7 +101,32 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .topbar { display: flex; align-items: center; gap: 8px; padding: 10px 32px; min-height: 56px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 20; }
 .topbar .menu-btn, .topbar .topbar-title { display: none; }
 .topbar.no-profile { display: none; }
-.profile { position: relative; margin-left: auto; }
+.topbar-end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.profile { position: relative; }
+.bell { position: relative; }
+.bell-btn { position: relative; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+.bell-count { position: absolute; top: 3px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
+.bell-pop { position: absolute; right: -48px; top: calc(100% + 6px); width: 360px; max-width: calc(100vw - 24px); max-height: min(70vh, 520px); overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16); padding: 6px; z-index: 50; }
+.bell-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.bell-list { list-style: none; margin: 0; padding: 0; }
+.bell-item { display: grid; gap: 2px; width: 100%; text-align: left; border: 0; background: none; padding: 10px; border-radius: 8px; cursor: pointer; color: var(--text); font: inherit; position: relative; }
+.bell-item:hover, .bell-item:focus-visible { background: var(--hover); }
+.bell-item.action { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.bell-item.unread::before, .bell-item.action::before { content: ""; position: absolute; left: 2px; top: 16px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.bell-item.action::before { background: var(--warn); }
+.bell-title { font-weight: 600; font-size: 14px; }
+.bell-body { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.bell-time { font-size: 12px; color: var(--muted); }
+.bell-time b { color: var(--warn); font-weight: 600; }
+.bell-empty { padding: 10px; margin: 0; }
+.bell-alerts { width: calc(100% - 12px); margin: 6px; }
+.bell-toast { position: fixed; right: 20px; top: 70px; z-index: 60; display: grid; gap: 2px; text-align: left; width: 320px; max-width: calc(100vw - 32px); padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); border-left: 4px solid var(--warn); background: var(--surface); color: var(--text); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); cursor: pointer; font: inherit; animation: toast-in 0.2s ease-out; }
+.bell-toast span { font-size: 13px; color: var(--muted); }
+@keyframes toast-in { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.approvals-card { border-left: 4px solid var(--warn); }
+.cmd { background: var(--hover); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: all; margin: 8px 0 0; }
+.approvals-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.approvals-card li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .profile-btn { display: flex; align-items: center; gap: 10px; border: 1px solid transparent; background: none; padding: 4px 8px 4px 4px; border-radius: 999px; cursor: pointer; color: var(--text); font: inherit; }
 .profile-btn:hover, .profile-btn[aria-expanded="true"] { background: var(--hover); border-color: var(--border); }
 .profile-name { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; max-width: 200px; }
@@ -556,6 +581,8 @@ input.num { text-align: right; }
   .topbar.no-profile { display: flex; }
   .profile-name, .caret { display: none; }
   .profile-btn { padding: 2px; }
+  .bell-pop { position: fixed; left: 12px; right: 12px; top: 56px; width: auto; max-width: none; }
+  .bell-toast { top: 60px; right: 16px; }
   .topbar-title { font-weight: 600; }
   .page { padding: 20px 16px 40px; }
   .alert { margin: 12px 16px 0; }

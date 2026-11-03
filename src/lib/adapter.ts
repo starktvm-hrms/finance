@@ -76,6 +76,7 @@ export interface AuthApi {
   saveRoles(roles: Role[]): Promise<void>;
   saveLogin(login: Login & { password?: string; create?: boolean }): Promise<void>;
   deleteLogin(username: string): Promise<void>;
+  signOutLogin(username: string): Promise<void>; // ends every session of that login
 }
 
 const KEY = "agency-finance:data:v1";
@@ -196,6 +197,9 @@ export function serverAdapter(base: string): DataAdapter {
       },
       async saveLogin(login) {
         await check(await fetch(`${url}/admin/users`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(login) }));
+      },
+      async signOutLogin(username) {
+        await check(await fetch(`${url}/admin/users/logout`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) }));
       },
       async deleteLogin(username) {
         await check(await fetch(`${url}/admin/users/delete`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) }));

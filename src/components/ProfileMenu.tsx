@@ -13,7 +13,7 @@ const initials = (name: string) =>
 
 /** Top-right profile button: who is signed in, change password, sign out. */
 export default function ProfileMenu() {
-  const { user, myName, access, data, signOut, changePassword } = useStore();
+  const { user, myName, access, data, signOut, changePassword, legacy } = useStore();
   const [open, setOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -36,7 +36,7 @@ export default function ProfileMenu() {
 
   return (
     <div className="profile" ref={box}>
-      <button className="profile-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title={`Signed in as ${user}`}>
+      <button className="profile-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title={`Signed in as ${user ?? myName}`}>
         <span className="avatar" aria-hidden>{initials(myName)}</span>
         <span className="profile-name">
           <strong>{myName}</strong>
@@ -50,11 +50,11 @@ export default function ProfileMenu() {
             <span className="avatar big" aria-hidden>{initials(myName)}</span>
             <div>
               <strong>{myName}</strong>
-              <div className="muted small">{user}</div>
+              <div className="muted small">{legacy ? "Signed in with the browser pop-up login" : user}</div>
               <div className="muted small">{[access.roleName, dept].filter(Boolean).join(" · ")}</div>
             </div>
           </div>
-          <button role="menuitem" className="profile-item" onClick={() => { setOpen(false); setPwOpen(true); }}>Change password</button>
+          {!legacy && <button role="menuitem" className="profile-item" onClick={() => { setOpen(false); setPwOpen(true); }}>Change password</button>}
           <button role="menuitem" className="profile-item danger" onClick={() => { setOpen(false); signOut(); }}>Sign out</button>
         </div>
       )}
