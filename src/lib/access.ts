@@ -30,8 +30,16 @@ export interface Access {
 }
 export const FULL_ACCESS: Access = { admin: true, areas: AREAS.map((a) => a.id), roleName: "Admin", scope: "all", employeeId: "" };
 
+/** Areas whose people work on jobs: any of them can open a job's page (timeline, conversation, files). */
+export const JOB_VIEW_AREAS = ["jobs", "estimates", "invoices"];
+
+/** Whether a page can be opened with these permissions. */
+export const pageAllowed = (page: PageId, can: (area: string) => boolean) =>
+  page === "job" ? JOB_VIEW_AREAS.some(can) : can(areaOfPage(page));
+
 /** Which area a page belongs to (Clients is part of Clients & Vendors). */
 export function areaOfPage(page: PageId): AreaId {
   if (page === "clients") return "directory";
+  if (page === "job") return "jobs";
   return (AREAS.find((a) => a.page === page)?.id ?? "dashboard") as AreaId;
 }

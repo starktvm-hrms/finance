@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_DEPARTMENTS, type AppData, type Branch, type Client, type Department, type Employee, type Estimate, type Expense, type Invoice, type Project, type Settings, type Vendor } from "../types";
+import { DEFAULT_DEPARTMENTS, type AppData, type Branch, type Client, type Department, type Employee, type Estimate, type Expense, type Invoice, type Message, type Payment, type Project, type Settings, type Vendor, type Attachment } from "../types";
 import { ForbiddenError, SignedOutError, getAdapter, readBrowserData, type Me } from "./adapter";
 import { FULL_ACCESS, type Access } from "./access";
 import { applyOp, type Collection, type Op } from "./ops";
@@ -21,6 +21,12 @@ type ItemOf<C extends Collection> = C extends "clients"
       ? Estimate
       : C extends "invoices"
         ? Invoice
+        : C extends "payments"
+        ? Payment
+        : C extends "messages"
+        ? Message
+        : C extends "attachments"
+        ? Attachment
         : Expense;
 
 export type SyncState = "loading" | "saved" | "saving" | "error";
@@ -39,6 +45,10 @@ interface Store {
   /** What this user may open and change (everything unless signed in with a limited role). */
   access: Access;
   can(area: string): boolean;
+  /** Name shown for the signed-in person in timelines ("Anu Thomas", else the login, else "Admin"). */
+  myName: string;
+  /** Fetch the latest data from the server now (after uploads etc.). */
+  refresh(): void;
   signIn(username: string, password: string, remember: boolean): Promise<void>;
   signOut(): Promise<void>;
   changePassword(current: string, next: string): Promise<void>;
@@ -51,7 +61,7 @@ interface Store {
 const Ctx = createContext<Store | null>(null);
 const adapter = getAdapter();
 const POLL_MS = 20_000;
-const OWNED = new Set<Collection>(["projects", "estimates", "invoices", "expenses"]);
+const OWNED = new Set<Collection>(["projects", "estimates", "invoices", "expenses", "payments", "messages"]);
 const FLUSH_MS = 400;
 
 /** Fill in fields added in newer versions so old data keeps working. */
@@ -310,7 +320,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, access, can: (area: string) => access.admin || access.areas.includes(area), signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
+    <Ctx.Provider value={{ myName: data.employees.find((e) => e.id === access.employeeId)?.name ?? user ?? "Admin", refresh: () => { rev.current = 0; window.setTimeout(() => pollRef.current(), 0); }, data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, access, can: (area: string) => access.admin || access.areas.includes(area), signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
       {children}
     </Ctx.Provider>
   );

@@ -96,7 +96,7 @@ export default function Dashboard() {
                   {recent.map((p) => {
                     const est = latestEstimate(p.id);
                     return (
-                      <tr key={p.id}>
+                      <tr key={p.id} className="clickable" onClick={() => go("job", { id: p.id })}>
                         <td><strong>{p.name}</strong><div className="muted small">{[p.number, clientName(p.clientId)].filter(Boolean).join(" · ")}</div></td>
                         <td><Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge></td>
                         <td className="small">{est ? <>{est.number}<div className="muted">{ESTIMATE_STATUS[est.status].label}</div></> : <span className="warn">Not raised</span>}</td>

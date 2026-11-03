@@ -142,6 +142,17 @@ export interface JobApproval {
   head: string; // department head asked to approve
   status: "pending" | "approved" | "rejected";
   decidedDate: string;
+  askedBy?: string; // name of the person who asked (shown in the job's timeline)
+  askedAt?: string; // ISO time
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+/** A job handed to another department (e.g. Finance, to estimate it). */
+export interface JobForward {
+  departmentId: ID;
+  by: string; // name
+  at: string; // ISO time
 }
 
 /** A job (shown as "Jobs"; named Project in code). `name` is the job title. */
@@ -156,6 +167,7 @@ export interface Project {
   subProduct?: string;
   approval?: JobApproval;
   departmentId?: ID; // department the job belongs to (default: its creator's)
+  forwards?: JobForward[];
   createdBy?: string; // login that created it (blank on records made before tracking)
   createdById?: ID; // employee linked to that login
   name: string;
@@ -240,6 +252,8 @@ export interface Estimate {
   discount: number;
   notes: string;
   decidedDate: string; // approved / rejected on
+  decidedAt?: string; // ISO time of that decision
+  decidedBy?: string; // name of the person who recorded it
   invoiceId: ID | ""; // set once converted
   title?: string;
   jobType?: string; // printed as "Job Type", e.g. Brochure Printing
@@ -286,6 +300,40 @@ export interface Expense {
   createdAt: string;
 }
 
+/** Money received against a job before (or without) the invoice being fully paid. */
+export interface Payment {
+  id: ID;
+  projectId: ID;
+  amount: number;
+  date: string;
+  note: string;
+  createdBy?: string;
+  createdById?: ID;
+  createdAt: string;
+}
+
+/** A post in a job's conversation (sanitised rich text). */
+export interface Message {
+  id: ID;
+  projectId: ID;
+  html: string;
+  createdBy?: string;
+  createdById?: ID;
+  createdAt: string;
+}
+
+/** A file uploaded to a job. The file itself is stored on the server. */
+export interface Attachment {
+  id: ID;
+  projectId: ID;
+  name: string;
+  size: number;
+  type: string;
+  createdBy?: string;
+  createdById?: ID;
+  createdAt: string;
+}
+
 export interface AppData {
   version: 1;
   settings: Settings;
@@ -298,4 +346,7 @@ export interface AppData {
   estimates: Estimate[];
   invoices: Invoice[];
   expenses: Expense[];
+  payments: Payment[];
+  messages: Message[];
+  attachments: Attachment[];
 }
