@@ -90,7 +90,7 @@ export default function SettingsPage() {
             </button>
           )}
           <button className="btn" onClick={() => window.confirm("Replace current data with sample data?") && replaceAll(sampleData())}>Load sample data</button>
-          <button className="btn danger" onClick={() => window.confirm("Erase all clients, jobs, estimates, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 } })}>
+          <button className="btn danger" onClick={() => window.confirm("Erase all clients, vendors, jobs, estimates, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 } })}>
             Clear all data
           </button>
         </div>

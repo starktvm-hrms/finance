@@ -4,13 +4,20 @@ import { useStore } from "../lib/store";
 import { downloadFile, fmtDate, money, toCSV, today, uid } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
 
-export default function Expenses() {
+export default function Expenses({ params }: { params: URLSearchParams }) {
   const { data, upsert, remove } = useStore();
   const s = data.settings;
   const [edit, setEdit] = useState<Expense | null>(null);
   const [cat, setCat] = useState<ExpenseCategory | "all">("all");
   const [month, setMonth] = useState("");
   const [q, setQ] = useState("");
+  const [vendorId, setVendorId] = useState(params.get("vendor") ?? "");
+  const vendorFilter = data.vendors.find((v) => v.id === vendorId);
+  /** Link the expense to a vendor list entry when the payee name matches one. */
+  const linkVendor = (e: Expense): Expense => {
+    const match = data.vendors.find((v) => v.name.trim().toLowerCase() === e.vendor.trim().toLowerCase());
+    return { ...e, vendor: match ? match.name : e.vendor.trim(), vendorId: match?.id };
+  };
 
   const blank = (): Expense => ({ id: uid(), date: today(), vendor: "", category: "Software & Tools", amount: 0, projectId: "", description: "", recurring: false, createdAt: new Date().toISOString() });
   const projectName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -18,9 +25,9 @@ export default function Expenses() {
   const rows = useMemo(
     () =>
       data.expenses
-        .filter((e) => (cat === "all" || e.category === cat) && (!month || e.date.startsWith(month)) && `${e.vendor} ${e.description}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((e) => (!vendorId || e.vendorId === vendorId) && (cat === "all" || e.category === cat) && (!month || e.date.startsWith(month)) && `${e.vendor} ${e.description}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.date.localeCompare(a.date)),
-    [data.expenses, cat, month, q],
+    [data.expenses, cat, month, q, vendorId],
   );
   const total = rows.reduce((s, e) => s + e.amount, 0);
 
@@ -50,7 +57,8 @@ export default function Expenses() {
           {EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" />
-        {(cat !== "all" || month || q) && <button className="btn ghost" onClick={() => { setCat("all"); setMonth(""); setQ(""); }}>Clear</button>}
+        {vendorFilter && <span className="badge badge-info">Vendor: {vendorFilter.name}</span>}
+        {(cat !== "all" || month || q || vendorId) && <button className="btn ghost" onClick={() => { setCat("all"); setMonth(""); setQ(""); setVendorId(""); }}>Clear</button>}
       </div>
       <div className="card flush">
         {rows.length === 0 ? (
@@ -64,7 +72,7 @@ export default function Expenses() {
               {rows.map((e) => (
                 <tr key={e.id} className="clickable" onClick={() => setEdit(e)}>
                   <td className="nowrap">{fmtDate(e.date, s.locale)}</td>
-                  <td>{e.vendor}{e.recurring && <span className="muted small"> · recurring</span>}{e.description && <div className="muted small">{e.description}</div>}</td>
+                  <td>{e.vendor}{e.vendorId && <span className="muted small" title="In vendor list"> ✓</span>}{e.recurring && <span className="muted small"> · recurring</span>}{e.description && <div className="muted small">{e.description}</div>}</td>
                   <td><Badge tone="neutral">{e.category}</Badge></td>
                   <td className="muted">{projectName(e.projectId) || "—"}</td>
                   <td className="num">{money(e.amount, s)}</td>
@@ -81,8 +89,13 @@ export default function Expenses() {
 
       {edit && (
         <Modal title={data.expenses.some((x) => x.id === edit.id) ? "Edit expense" : "Add expense"} onClose={() => setEdit(null)}>
-          <form className="form" onSubmit={(e) => { e.preventDefault(); upsert("expenses", edit); setEdit(null); }}>
-            <Field label="Vendor / payee"><input required autoFocus value={edit.vendor} onChange={(e) => setEdit({ ...edit, vendor: e.target.value })} /></Field>
+          <form className="form" onSubmit={(e) => { e.preventDefault(); upsert("expenses", linkVendor(edit)); setEdit(null); }}>
+            <Field label="Vendor / payee">
+              <input required autoFocus list="vendor-names" value={edit.vendor} onChange={(e) => setEdit({ ...edit, vendor: e.target.value })} />
+              <datalist id="vendor-names">
+                {data.vendors.filter((v) => v.active).map((v) => <option key={v.id} value={v.name} />)}
+              </datalist>
+            </Field>
             <Field label={`Amount (${s.currency})`}><input required type="number" min={0} step="0.01" value={edit.amount || ""} onChange={(e) => setEdit({ ...edit, amount: Number(e.target.value) })} /></Field>
             <Field label="Date"><input required type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} /></Field>
             <Field label="Category">

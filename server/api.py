@@ -30,7 +30,7 @@ DATA_FILE = DATA_DIR / "data.json"
 BACKUP_DIR = DATA_DIR / "backups"
 KEEP_BACKUPS = 30
 MAX_BODY = 10 * 1024 * 1024
-COLLECTIONS = {"clients", "projects", "estimates", "invoices", "expenses"}
+COLLECTIONS = {"clients", "vendors", "projects", "estimates", "invoices", "expenses"}
 
 lock = threading.Lock()
 state = {"rev": 0, "data": None}

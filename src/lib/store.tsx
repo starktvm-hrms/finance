@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { AppData, Client, Estimate, Expense, Invoice, Project, Settings } from "../types";
+import type { AppData, Client, Estimate, Expense, Invoice, Project, Settings, Vendor } from "../types";
 import { getAdapter, readBrowserData } from "./adapter";
 import { applyOp, type Collection, type Op } from "./ops";
 import { emptyData, sampleData } from "./seed";
 
 type ItemOf<C extends Collection> = C extends "clients"
   ? Client
-  : C extends "projects"
+  : C extends "vendors"
+    ? Vendor
+    : C extends "projects"
     ? Project
     : C extends "estimates"
       ? Estimate
