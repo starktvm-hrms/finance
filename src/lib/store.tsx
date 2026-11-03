@@ -51,6 +51,7 @@ interface Store {
 const Ctx = createContext<Store | null>(null);
 const adapter = getAdapter();
 const POLL_MS = 20_000;
+const OWNED = new Set<Collection>(["projects", "estimates", "invoices", "expenses"]);
 const FLUSH_MS = 400;
 
 /** Fill in fields added in newer versions so old data keeps working. */
@@ -69,8 +70,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const accessRef = useRef<Access>(FULL_ACCESS);
   const applyMe = (me: Me) => {
     const a: Access = me.mode === "legacy" || me.admin !== false
-      ? FULL_ACCESS
-      : { admin: false, areas: me.areas ?? [], roleName: me.roleName ?? me.role ?? "" };
+      ? { ...FULL_ACCESS, employeeId: me.employeeId ?? "" }
+      : { admin: false, areas: me.areas ?? [], roleName: me.roleName ?? me.role ?? "", scope: me.scope ?? "all", employeeId: me.employeeId ?? "" };
     accessRef.current = a;
     setAccess(a);
   };
@@ -261,7 +262,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", h);
   }, []);
 
-  const upsert = useCallback(<C extends Collection>(col: C, item: ItemOf<C>) => push({ op: "upsert", col, item: item as unknown as { id: string } }), [push]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const userRef = useRef(user);
+  userRef.current = user;
+  const upsert = useCallback(<C extends Collection>(col: C, item: ItemOf<C>) => {
+    let it = item as unknown as Record<string, unknown> & { id: string };
+    // Record who created jobs, estimates, invoices and expenses (dashboards count by person and department).
+    const who = userRef.current;
+    if (who && OWNED.has(col) && !it.createdBy && !(dataRef.current[col] as { id: string }[]).some((x) => x.id === it.id)) {
+      const empId = accessRef.current.employeeId;
+      it = { ...it, createdBy: who, ...(empId && { createdById: empId }) };
+      if (col === "projects" && !it.departmentId) {
+        const dept = dataRef.current.employees.find((e) => e.id === empId)?.departmentId;
+        if (dept) it = { ...it, departmentId: dept };
+      }
+    }
+    push({ op: "upsert", col, item: it });
+  }, [push]);
   const remove = useCallback((col: Collection, id: string) => push({ op: "remove", col, id }), [push]);
   const updateSettings = useCallback((patch: Partial<Settings>) => push({ op: "settings", patch }), [push]);
   const replaceAll = useCallback((next: AppData) => push({ op: "replace", data: next }), [push]);

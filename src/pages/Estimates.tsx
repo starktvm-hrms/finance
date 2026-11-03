@@ -7,6 +7,8 @@ import MediaEstimate from "../components/MediaEstimate";
 import ProductionEstimate from "../components/ProductionEstimate";
 import SheetForm from "../components/SheetForm";
 import { estimateType, jobCategory, typeInfo } from "../lib/doctype";
+import { listFilter } from "../lib/scope";
+import { ScopeChip } from "../components/ScopeChip";
 import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
@@ -35,15 +37,17 @@ const TYPE_TABS = [{ id: "all", label: "All", hint: "Every estimate, of every ty
 const displayStatus = (e: Estimate) => (e.status === "sent" && e.validUntil && e.validUntil < today() ? "expired" : e.status);
 
 export default function Estimates({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings, can } = useStore();
+  const { data, upsert, remove, updateSettings, can, user, access } = useStore();
   const s = data.settings;
+  const lf = listFilter(data, params, user, access.employeeId); // from a dashboard tile: your / one department's estimates
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
 
   // Tab = estimate type (#/estimates?type=media); "all" shows every type.
   const typeTab = TYPE_TABS.some((t) => t.id === params.get("type")) ? (params.get("type") as string) : "all";
   const tabInfo = TYPE_TABS.find((t) => t.id === typeTab)!;
-  const switchTab = (type: string) => go("estimates", { ...(type !== "all" && { type }), ...(filter !== "all" && { status: filter }) });
+  const keep = Object.fromEntries(["by", "dept"].filter((k) => params.has(k)).map((k) => [k, params.get(k)!]));
+  const switchTab = (type: string) => go("estimates", { ...(type !== "all" && { type }), ...(filter !== "all" && { status: filter }), ...keep });
 
   const blank = (projectId = ""): Estimate => {
     const job = data.projects.find((p) => p.id === projectId);
@@ -129,9 +133,9 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   const rows = useMemo(
     () =>
       data.estimates
-        .filter((e) => (!noMedia || estimateType(e) !== "media") && (typeTab === "all" || estimateType(e) === typeTab) && (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
+        .filter((e) => (!lf || lf.keepDoc(e)) && (!noMedia || estimateType(e) !== "media") && (typeTab === "all" || estimateType(e) === typeTab) && (filter === "all" || e.status === filter) && `${e.number} ${clientName(e.clientId)} ${jobName(e.projectId)}`.toLowerCase().includes(q.toLowerCase()))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number)),
-    [data.estimates, data.clients, data.projects, filter, q, typeTab, noMedia], // eslint-disable-line react-hooks/exhaustive-deps
+    [data.estimates, data.clients, data.projects, filter, q, typeTab, noMedia, lf], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const save = (e: Estimate) => {
@@ -223,6 +227,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
           </button>
         ))}
       </div>
+      {lf && <ScopeChip label={lf.label} page="estimates" params={params} />}
       {noMedia && typeTab === "all" && (
         <div className="row gap">
           <span className="badge badge-info">Excluding media estimates</span>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAdapter, type Login, type Role } from "../lib/adapter";
 import { useStore } from "../lib/store";
-import { AREAS } from "../lib/access";
+import { AREAS, SCOPES } from "../lib/access";
 import { Badge, Empty, Field, Modal, PageHeader } from "../components/ui";
 
 const api = getAdapter().auth;
@@ -75,7 +75,7 @@ export default function Access() {
     if (!name) return;
     let id = slug(name);
     while (id === "admin" || roles.some((r) => r.id === id)) id += "_2";
-    setRoles((rs) => [...rs, { id, name, areas: ["dashboard"] }]);
+    setRoles((rs) => [...rs, { id, name, areas: ["dashboard"], scope: "own" }]);
   };
   const removeRole = (r: Role) => {
     if (logins.some((l) => l.role === r.id)) return setMsg({ ok: false, text: `Move the logins with the ${r.name} role to another role first.` });
@@ -128,7 +128,7 @@ export default function Access() {
       <PageHeader
         level={2}
         title="Roles & tab access"
-        subtitle="Tick the tabs each role can open. Admins always have every tab, plus this one."
+        subtitle="Tick the tabs each role can open, and choose what its dashboard counts: the whole agency, the person's department (from their employee record) or only their own work. Admins always have every tab, plus this one."
         actions={
           <>
             <button className="btn" onClick={addRole}>+ New role</button>
@@ -143,6 +143,7 @@ export default function Access() {
           <thead>
             <tr>
               <th>Role</th>
+              <th>Dashboard counts</th>
               {AREAS.map((a) => <th key={a.id} className="center">{a.label}</th>)}
               <th />
             </tr>
@@ -150,6 +151,7 @@ export default function Access() {
           <tbody>
             <tr>
               <td><strong>Admin</strong><div className="muted small">Full access</div></td>
+              <td className="muted small">Whole agency</td>
               {AREAS.map((a) => <td key={a.id} className="center"><input type="checkbox" checked disabled aria-label={`Admin: ${a.label}`} /></td>)}
               <td />
             </tr>
@@ -158,6 +160,11 @@ export default function Access() {
                 <td>
                   <input className="role-name" aria-label="Role name" value={r.name} onChange={(e) => setRoles((rs) => rs.map((x) => (x.id === r.id ? { ...x, name: e.target.value } : x)))} />
                   <div className="muted small">{logins.filter((l) => l.role === r.id).length} login(s)</div>
+                </td>
+                <td>
+                  <select aria-label={`${r.name}: dashboard counts`} value={r.scope ?? "all"} onChange={(e) => setRoles((rs) => rs.map((x) => (x.id === r.id ? { ...x, scope: e.target.value as Role["scope"] } : x)))}>
+                    {SCOPES.map((sc) => <option key={sc.id} value={sc.id}>{sc.label}</option>)}
+                  </select>
                 </td>
                 {AREAS.map((a) => (
                   <td key={a.id} className="center">
@@ -206,6 +213,9 @@ export default function Access() {
                 <button type="button" className="btn" onClick={() => setEdit({ ...edit, password: randomPassword() })}>Generate</button>
               </span>
             </Field>
+            {edit.role !== "admin" && roles.find((r) => r.id === edit.role)?.scope === "department" && !edit.employeeId && (
+              <p className="warn small span2">Link this login to an employee: this role's dashboard counts the employee's department.</p>
+            )}
             {edit.role !== "admin" && (
               <p className="muted small span2">
                 Can open: {AREAS.filter((a) => roles.find((r) => r.id === edit.role)?.areas.includes(a.id)).map((a) => a.label).join(", ") || "nothing yet"}

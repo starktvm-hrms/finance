@@ -155,6 +155,9 @@ export interface Project {
   product?: string;
   subProduct?: string;
   approval?: JobApproval;
+  departmentId?: ID; // department the job belongs to (default: its creator's)
+  createdBy?: string; // login that created it (blank on records made before tracking)
+  createdById?: ID; // employee linked to that login
   name: string;
   status: ProjectStatus;
   budget: number;
@@ -199,6 +202,8 @@ export interface Invoice {
   header?: string;
   remarks?: string;
   discountPct?: number;
+  createdBy?: string; // login that created it (blank on records made before tracking)
+  createdById?: ID; // employee linked to that login
   createdAt: string;
 }
 
@@ -245,6 +250,8 @@ export interface Estimate {
   country?: CountryCode; // billing country → currency (default: agency currency)
   discountPct?: number; // when set, discount = subtotal × pct
   roundOff?: boolean; // round the grand total to a whole unit
+  createdBy?: string; // login that created it (blank on records made before tracking)
+  createdById?: ID; // employee linked to that login
   createdAt: string;
 }
 
@@ -273,6 +280,9 @@ export interface Expense {
   projectId: ID | "";
   description: string;
   recurring: boolean;
+  departmentId?: ID; // default: the job's department
+  createdBy?: string; // login that created it (blank on records made before tracking)
+  createdById?: ID; // employee linked to that login
   createdAt: string;
 }
 
