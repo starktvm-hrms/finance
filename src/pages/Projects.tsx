@@ -22,11 +22,14 @@ export const PROJECT_STATUS: Record<ProjectStatus, { label: string; tone: string
 type JobFilter = ProjectStatus | "all" | "needs_estimate";
 
 export default function Projects({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings, can, access, user } = useStore();
+  const { data, upsert, remove, updateSettings, can, access, user, myName } = useStore();
   const lf = listFilter(data, params, user, access.employeeId); // from a dashboard tile: your / one department's jobs
   const seeMoney = can("invoices") && can("expenses"); // invoiced / costs / profit need both
   const s = data.settings;
-  const [edit, setEdit] = useState<Project | null>(null);
+  // #/projects?edit=ID opens a job's form (from the job's page; saving goes back there).
+  const [edit, setEdit] = useState<Project | null>(() => data.projects.find((p) => p.id === params.get("edit")) ?? null);
+  const fromJob = params.get("edit");
+  const closeForm = () => (fromJob ? window.location.replace(`#/job?id=${encodeURIComponent(fromJob)}`) : setEdit(null));
   const [status, setStatus] = useState<JobFilter>(() => {
     const f = params.get("status") as JobFilter | null;
     return f && (f === "needs_estimate" || f in PROJECT_STATUS) ? f : "all";
@@ -66,7 +69,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
       updateSettings({ nextJobNumber: s.nextJobNumber + 1 });
     }
     if (sendForApproval && head && (next.approval?.head !== head || next.approval?.status === "rejected")) {
-      next.approval = { head, status: "pending", decidedDate: "" };
+      next.approval = { head, status: "pending", decidedDate: "", askedBy: myName, askedAt: new Date().toISOString() };
     } else if (!sendForApproval) {
       next = { ...next, approval: undefined };
     }
@@ -81,11 +84,11 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         products[i] = { ...products[i], subProducts: [...products[i].subProducts, next.subProduct] };
       if (i < 0 || products[i] !== client.products?.[i]) upsert("clients", { ...client, products });
     }
-    setEdit(null);
+    closeForm();
   };
 
   const decideApproval = (p: Project, status: "approved" | "rejected") =>
-    p.approval && upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today() } });
+    p.approval && upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today(), decidedBy: myName, decidedAt: new Date().toISOString() } });
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const statusMatch = (p: Project, f: JobFilter) => f === "all" || p.status === f || (f === "needs_estimate" && needsEstimate(data, p.id));
   const inTab = (p: Project) => (typeTab === "all" || catOf(p) === typeTab) && (!lf || lf.keepJob(p));
@@ -149,7 +152,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                 const f = projectFinancials(data, p.id);
                 const pct = p.budget ? Math.min(100, Math.round((f.invoiced / p.budget) * 100)) : 0;
                 return (
-                  <tr key={p.id} className="clickable" onClick={() => setEdit(p)}>
+                  <tr key={p.id} className="clickable" onClick={() => go("job", { id: p.id })} title="Open job details">
                     <td className="nowrap">{p.number ?? <span className="muted">—</span>}</td>
                     <td>
                       <strong>{p.name}</strong>
@@ -202,7 +205,10 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                         </td>
                       </>
                     )}
-                    <td className="actions">{access.admin && <button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(p))}>Delete</button>}</td>
+                    <td className="actions" onClick={(e) => e.stopPropagation()}>
+                      <button className="btn ghost" onClick={() => setEdit(p)}>Edit</button>
+                      {access.admin && <button className="btn ghost danger" onClick={() => del(p)}>Delete</button>}
+                    </td>
                   </tr>
                 );
               })}
@@ -211,7 +217,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
-      {edit && <JobForm initial={edit} isNew={!data.projects.some((p) => p.id === edit.id)} onCancel={() => setEdit(null)} onSave={saveJob} />}
+      {edit && <JobForm initial={edit} isNew={!data.projects.some((p) => p.id === edit.id)} onCancel={closeForm} onSave={saveJob} />}
     </div>
   );
 }

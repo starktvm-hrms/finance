@@ -16,6 +16,14 @@ export interface DataAdapter {
   load(sinceRev?: number): Promise<Snapshot | null>;
   apply(ops: Op[]): Promise<number>; // returns the new revision
   auth?: AuthApi; // present when the data lives behind a sign-in
+  files?: FilesApi; // present when files can be stored (server only)
+}
+
+export interface FilesApi {
+  upload(projectId: string, file: File): Promise<void>;
+  url(id: string): string;
+  remove(id: string): Promise<void>;
+  maxBytes: number;
 }
 
 /** Thrown when the server says the session is missing or expired. */
@@ -149,6 +157,17 @@ export function serverAdapter(base: string): DataAdapter {
         }),
       );
       return body.rev as number;
+    },
+    files: {
+      maxBytes: 10 * 1024 * 1024 - 64 * 1024,
+      async upload(projectId, file) {
+        const q = new URLSearchParams({ job: projectId, name: file.name, type: file.type || "application/octet-stream" });
+        await check(await fetch(`${url}/files?${q}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, body: file }));
+      },
+      url: (id) => `${url}/files/${encodeURIComponent(id)}`,
+      async remove(id) {
+        await check(await fetch(`${url}/files/delete`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }));
+      },
     },
     auth: {
       async me() {

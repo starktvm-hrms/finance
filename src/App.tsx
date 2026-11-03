@@ -3,10 +3,11 @@ import Directory from "./pages/Directory";
 import Login from "./pages/Login";
 import People from "./pages/People";
 import { BRAND_MARK } from "./lib/brand";
-import { areaOfPage } from "./lib/access";
+import { areaOfPage, pageAllowed } from "./lib/access";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
+import JobDetails from "./pages/JobDetails";
 import Invoices from "./pages/Invoices";
 import Estimates from "./pages/Estimates";
 import { go, useRoute, type PageId } from "./lib/route";
@@ -39,8 +40,8 @@ export default function App() {
   };
   // "clients" is the old route for the Clients list; it now lives in the Clients & Vendors page.
   const inDirectory = page === "clients" || page === "vendors";
-  const isActive = (id: PageId) => id === page || (id === "vendors" && inDirectory);
-  const pageLabel = inDirectory ? "Clients & Vendors" : PAGES.find((p) => p.id === page)?.label;
+  const isActive = (id: PageId) => id === page || (id === "vendors" && inDirectory) || (id === "projects" && page === "job");
+  const pageLabel = inDirectory ? "Clients & Vendors" : page === "job" ? "Job Details" : PAGES.find((p) => p.id === page)?.label;
 
   if (auth === "checking") return <div className="splash">Loading…</div>;
   if (auth === "signed-out") return <Login />;
@@ -90,7 +91,7 @@ export default function App() {
         )}
         {!ready ? (
           <div className="empty">Loading…</div>
-        ) : !can(areaOfPage(page)) ? (
+        ) : !pageAllowed(page, can) ? (
           <div className="page">
             <div className="card empty">
               <h2>No access</h2>
@@ -105,6 +106,7 @@ export default function App() {
             {page === "invoices" && <Invoices key={params.toString()} params={params} />}
             {page === "expenses" && <Expenses key={params.toString()} params={params} />}
             {page === "projects" && <Projects key={params.toString()} params={params} />}
+            {page === "job" && <JobDetails key={params.get("id")} id={params.get("id") ?? ""} />}
             {page === "people" && <People key={params.toString()} params={params} />}
             {inDirectory && <Directory key={params.toString()} tab={page === "clients" ? "clients" : params.get("category") ?? "clients"} />}
             {page === "settings" && <SettingsPage />}

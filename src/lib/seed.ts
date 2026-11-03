@@ -76,7 +76,7 @@ export function withDefaultDepartments(d: AppData): AppData {
 }
 
 export function emptyData(): AppData {
-  return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], employees: [], departments: [], branches: [], projects: [], estimates: [], invoices: [], expenses: [] };
+  return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], employees: [], departments: [], branches: [], projects: [], estimates: [], invoices: [], expenses: [], payments: [], messages: [], attachments: [] };
 }
 
 /** Sample data so the dashboard isn't empty on first run. Clear it from Settings. */

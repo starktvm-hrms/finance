@@ -20,6 +20,9 @@ SHA-256 is stored (sessions.json), so restarts don't sign anyone out.
     POST /password {current, new}
     GET  /data[?since=REV]   -> {"rev": n, "data": {...} | null}  or {"unchanged": true}
     POST /ops   {"ops":[...]} -> {"rev": n}
+    POST /files?job=ID&name=N&type=T  (raw file body) -> {"rev", "item"}
+    GET  /files/ID           -> the file (as a download)
+    POST /files/delete {id}
     GET  /health             -> {"ok": true, "rev": n}
 
 Until users.json exists (installs set up before sign-in existed, still behind
@@ -44,6 +47,7 @@ import shutil
 import sys
 import threading
 import time
+import urllib.parse
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,7 +58,9 @@ DATA_FILE = DATA_DIR / "data.json"
 BACKUP_DIR = DATA_DIR / "backups"
 KEEP_BACKUPS = 30
 MAX_BODY = 10 * 1024 * 1024
-COLLECTIONS = {"clients", "vendors", "employees", "departments", "branches", "projects", "estimates", "invoices", "expenses"}
+COLLECTIONS = {"clients", "vendors", "employees", "departments", "branches", "projects", "estimates", "invoices", "expenses", "payments", "messages", "attachments"}
+FILES_DIR = DATA_DIR / "files"  # files uploaded to jobs, named by their attachment id
+SAFE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"}
 
 USERS_FILE = DATA_DIR / "users.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
@@ -86,14 +92,16 @@ AREAS = ["dashboard", "jobs", "estimates", "invoices", "expenses", "directory", 
 AREA_COLS = {
     "jobs": {"projects"},
     "estimates": {"estimates"},
-    "invoices": {"invoices"},
+    "invoices": {"invoices", "payments"},
     "expenses": {"expenses"},
     "directory": {"clients", "vendors"},
     "people": {"employees", "departments", "branches"},
 }
 # Collections that are only sent to users with that area (everything else is
 # shared reference data the pages need, e.g. client and job names).
-PRIVATE_COLS = {"estimates": "estimates", "invoices": "invoices", "expenses": "expenses"}
+PRIVATE_COLS = {"estimates": "estimates", "invoices": "invoices", "expenses": "expenses", "payments": "invoices"}
+# Anyone who works on jobs can open a job's page, post in its conversation and add files.
+JOB_VIEW_AREAS = {"jobs", "estimates", "invoices"}
 # Settings a non-admin may move on, for the numbering of their own documents.
 COUNTER_KEYS = {"nextJobNumber": "jobs", "nextEstimateNumber": "estimates", "nextInvoiceNumber": "invoices"}
 # What a role's dashboard counts: everything, the user's department, or their own work.
@@ -126,6 +134,14 @@ def check_op(o: dict, admin: bool, areas: set):
                 raise Forbidden("You don't have access to change Settings.")
         return
     col = o.get("col")
+    if col == "attachments":
+        raise Forbidden("Files are added and removed with the upload button.")
+    if col == "messages":
+        if not areas & JOB_VIEW_AREAS:
+            raise Forbidden("You don't have access to jobs.")
+        if kind == "remove":
+            raise Forbidden("Only an admin can delete messages.")
+        return
     area = next((a for a, cols in AREA_COLS.items() if col in cols), None)
     if area not in areas:
         raise Forbidden(f"You don't have access to change {col or 'this'}.")
@@ -164,6 +180,18 @@ def visible_data(data, acc: dict):
             continue
         out[col] = [x for x in data.get(col, []) if dept_of(data, x) == dept] if dept else []
     return {**data, **out}
+
+
+def start_approved_job(d, o):
+    """An estimate the client approved starts its job (lead -> active), even when
+    whoever recorded it can't edit jobs. Mirrors decide() in src/pages/Estimates.tsx."""
+    item = o.get("item") if isinstance(o, dict) and o.get("op") == "upsert" and o.get("col") == "estimates" else None
+    if not isinstance(item, dict) or item.get("status") != "approved" or not item.get("projectId"):
+        return d
+    projects = d.get("projects", [])
+    if not any(p.get("id") == item["projectId"] and p.get("status") == "lead" for p in projects):
+        return d
+    return {**d, "projects": [{**p, "status": "active"} if p.get("id") == item["projectId"] else p for p in projects]}
 
 
 def load():
@@ -475,6 +503,8 @@ class Handler(BaseHTTPRequestHandler):
             emp = next((e for e in (data or {}).get("employees", []) if e.get("id") == emp_id), None) if emp_id else None
             acc["departmentId"] = (emp or {}).get("departmentId", "")
             return self.send(200, {"rev": rev, "data": visible_data(data, acc)})
+        if path.startswith("/files/"):
+            return self.download_file(path.removeprefix("/files/"), acc, data)
         if path == "/admin/access":
             if not acc["admin"]:
                 return self.send(403, {"error": "Only an admin can manage logins."})
@@ -485,6 +515,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.route()
+        if path == "/files":
+            return self.upload_file()
         try:
             body = self.json_body()
         except BadRequest as e:
@@ -503,7 +535,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.change_password(user, body)
         acc = access_of(user)
         if path == "/ops":
-            return self.apply_ops(body, acc)
+            return self.apply_ops(body, acc, user)
+        if path == "/files/delete":
+            return self.delete_file(body, acc, user)
         if path.startswith("/admin/"):
             if not acc["admin"]:
                 return self.send(403, {"error": "Only an admin can manage logins."})
@@ -616,7 +650,102 @@ class Handler(BaseHTTPRequestHandler):
         token, ttl = new_session(user, True)
         self.send(200, {"ok": True}, cookie=self.cookie(token, ttl))
 
-    def apply_ops(self, body: dict, acc: dict):
+    # ------------------------------------------------------------ job files
+    def _may_use_jobs(self, acc: dict) -> bool:
+        return acc["admin"] or bool(set(acc["areas"]) & JOB_VIEW_AREAS)
+
+    def _commit(self, op: dict):
+        """Apply one op under the lock and save; returns the new rev."""
+        with lock:
+            prev = (state["rev"], state["data"])
+            state["data"], state["rev"] = apply_op(state["data"], op), state["rev"] + 1
+            try:
+                save()
+            except OSError:
+                state["rev"], state["data"] = prev
+                raise
+            return state["rev"]
+
+    def upload_file(self):
+        """POST /files?job=ID&name=..&type=..  body = the file (application/octet-stream)."""
+        user = self.user()
+        if user is None:
+            return self.send(401, {"error": "Please sign in."})
+        acc = access_of(user)
+        if not self._may_use_jobs(acc):
+            return self.send(403, {"error": "You don't have access to jobs."})
+        # Not a type a cross-site form can send, so this needs a CORS preflight (CSRF protection).
+        if not self.headers.get("Content-Type", "").startswith("application/octet-stream"):
+            return self.send(415, {"error": "expected application/octet-stream"})
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > MAX_BODY:
+            return self.send(413, {"error": "Files can be up to 10 MB."})
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        job = (q.get("job") or [""])[0]
+        name = os.path.basename((q.get("name") or ["file"])[0].replace("\\", "/")).strip()[:200] or "file"
+        ftype = (q.get("type") or [""])[0][:100]
+        raw = self.rfile.read(length)
+        with lock:
+            exists = any(p.get("id") == job for p in (state["data"] or {}).get("projects", []))
+        if not exists:
+            return self.send(400, {"error": "No such job."})
+        fid = secrets.token_hex(16)
+        FILES_DIR.mkdir(parents=True, exist_ok=True)
+        path = FILES_DIR / fid
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+                f.flush()
+                os.fsync(f.fileno())
+            item = {"id": fid, "projectId": job, "name": name, "size": length, "type": ftype,
+                    "createdBy": user, "createdById": users().get(user or "", {}).get("employeeId", ""),
+                    "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            rev = self._commit({"op": "upsert", "col": "attachments", "item": item})
+        except (OSError, BadRequest) as e:
+            path.unlink(missing_ok=True)
+            return self.send(500, {"error": f"could not save the file: {e}"})
+        self.send(200, {"rev": rev, "item": item})
+
+    def download_file(self, fid: str, acc: dict, data):
+        if not self._may_use_jobs(acc):
+            return self.send(403, {"error": "You don't have access to jobs."})
+        rec = next((a for a in (data or {}).get("attachments", []) if a.get("id") == fid), None)
+        if not rec or len(fid) != 32 or not all(c in "0123456789abcdef" for c in fid):
+            return self.send(404, {"error": "not found"})
+        try:
+            raw = (FILES_DIR / fid).read_bytes()
+        except OSError:
+            return self.send(404, {"error": "The file is missing on the server."})
+        ctype = rec.get("type") if rec.get("type") in SAFE_TYPES else "application/octet-stream"
+        name = urllib.parse.quote(rec.get("name") or "file")
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{name}")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "sandbox")
+        self.send_header("Cache-Control", "private, no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def delete_file(self, body: dict, acc: dict, user: str):
+        fid = str(body.get("id", ""))
+        with lock:
+            rec = next((a for a in (state["data"] or {}).get("attachments", []) if a.get("id") == fid), None)
+        if not rec:
+            return self.send(404, {"error": "No such file."})
+        if not acc["admin"] and rec.get("createdBy") != user:
+            return self.send(403, {"error": "Only the person who uploaded a file, or an admin, can delete it."})
+        try:
+            rev = self._commit({"op": "remove", "col": "attachments", "id": fid})
+        except OSError as e:
+            return self.send(500, {"error": f"could not save: {e.strerror or e}"})
+        if len(fid) == 32 and all(c in "0123456789abcdef" for c in fid):
+            (FILES_DIR / fid).unlink(missing_ok=True)
+        self.send(200, {"rev": rev})
+
+    def apply_ops(self, body: dict, acc: dict, user: str):
         try:
             ops = body.get("ops")
             if not isinstance(ops, list) or not ops:
@@ -627,7 +756,13 @@ class Handler(BaseHTTPRequestHandler):
                 prev = (state["rev"], state["data"])
                 d = state["data"]
                 for o in ops:
+                    if not acc["admin"] and o.get("col") == "messages" and isinstance(o.get("item"), dict):
+                        # A post can't be edited, or written in someone else's name.
+                        if any(m.get("id") == o["item"].get("id") for m in (d or {}).get("messages", [])):
+                            raise Forbidden("Messages can't be edited.")
+                        o = {**o, "item": {**o["item"], "createdBy": user}}
                     d = apply_op(d, o)
+                    d = start_approved_job(d, o)
                 state["data"], state["rev"] = d, state["rev"] + 1
                 try:
                     save()
