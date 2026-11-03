@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Directory from "./pages/Directory";
 import Login from "./pages/Login";
+import { BRAND_MARK } from "./lib/brand";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
@@ -40,7 +41,7 @@ export default function App() {
     <div className="shell">
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
         <div className="brand">
-          <div className="logo">₹</div>
+          <img className="logo" src={BRAND_MARK} alt="" />
           <div>
             <div className="brand-name">{data.settings.agencyName}</div>
             <div className="brand-sub">Finance</div>

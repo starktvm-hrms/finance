@@ -2,6 +2,7 @@ import type { Estimate, LineItem } from "../types";
 import { useStore } from "../lib/store";
 import { amountInWords, docFormat, gstSplit, gstState, invoiceTotals } from "../lib/util";
 import { RichTextView } from "./SafeHtml";
+import { logoShowsName, logoSrc } from "../lib/brand";
 
 const dmy = (d: string) => {
   if (!d) return "";
@@ -55,9 +56,9 @@ export function Letterhead() {
   ].filter(Boolean);
   return (
     <header className="pe-letterhead">
-      <div className="pe-brand">
-        {s.logo && <img src={s.logo} alt="" />}
-        <span>{s.agencyName}</span>
+      <div className={`pe-brand ${logoShowsName(s) ? "full" : ""}`}>
+        <img src={logoSrc(s)} alt={logoShowsName(s) ? s.agencyName : ""} />
+        {!logoShowsName(s) && <span>{s.agencyName}</span>}
       </div>
       <p className="pe-address">
         {[s.agencyAddress.replace(/\n/g, ", "), ...contact].filter(Boolean).join("   ")}

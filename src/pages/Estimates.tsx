@@ -59,6 +59,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       type: typeTab === "all" ? "project" : (typeTab as EstimateType),
       number: "", // assigned on first save
       title: job?.name ?? "",
+      jobType: job?.jobType ?? "",
+      productLabel: [job?.product, job?.subProduct].filter(Boolean).join(" "),
       header: "",
       remarks: "",
       clientAddress: client?.address ?? "",
@@ -331,6 +333,7 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
       projectId: id,
       title: est.title || j?.name || "",
       productLabel: est.productLabel || [j?.product, j?.subProduct].filter(Boolean).join(" "),
+      jobType: est.jobType || j?.jobType || "",
     });
   };
   const pickCountry = (code: CountryCode) =>

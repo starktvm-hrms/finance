@@ -3,6 +3,7 @@ import type { LineItem, Settings } from "../types";
 import { useStore } from "../lib/store";
 import { docFormat, fmtDate, invoiceTotals, money, uid } from "../lib/util";
 import { RichTextView } from "./SafeHtml";
+import { logoShowsName, logoSrc } from "../lib/brand";
 
 /** Shared by invoices and estimates: anything with line items, tax and a discount. */
 export interface Billable {
@@ -104,8 +105,8 @@ export function DocumentView({
     <div className="invoice-doc print-area">
       <div className="row between top">
         <div>
-          {s.logo && <img className="doc-logo" src={s.logo} alt="" />}
-          <div className="doc-agency">{s.agencyName}</div>
+          <img className={`doc-logo ${logoShowsName(s) ? "full" : ""}`} src={logoSrc(s)} alt={logoShowsName(s) ? s.agencyName : ""} />
+          {!logoShowsName(s) && <div className="doc-agency">{s.agencyName}</div>}
           <div className="muted pre">{s.agencyAddress}</div>
           <div className="muted">{s.agencyEmail}</div>
           {s.taxId && <div className="muted">Tax ID: {s.taxId}</div>}

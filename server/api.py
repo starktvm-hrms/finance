@@ -340,7 +340,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True, "rev": rev})
         if path == "/branding":
             st = (data or {}).get("settings", {})
-            return self.send(200, {"agencyName": st.get("agencyName", ""), "logo": st.get("logo", "")})
+            return self.send(200, {"agencyName": st.get("agencyName", ""), "logo": st.get("logo", ""), "logoIncludesName": st.get("logoIncludesName", True)})
         user = self.user()
         if path == "/me":
             if user is None:

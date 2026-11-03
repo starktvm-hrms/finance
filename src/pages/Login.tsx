@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getAdapter } from "../lib/adapter";
 import { useStore } from "../lib/store";
+import { DEFAULT_LOGO } from "../lib/brand";
 
 const FEATURES = [
   { title: "Jobs to invoices", text: "Open a job, send the estimate, get approval and raise the invoice." },
@@ -11,7 +12,7 @@ const FEATURES = [
 /** Home page when signed out: agency branding on one side, the sign-in form on the other. */
 export default function Login() {
   const { signIn } = useStore();
-  const [brand, setBrand] = useState<{ agencyName: string; logo: string }>({ agencyName: "", logo: "" });
+  const [brand, setBrand] = useState<{ agencyName: string; logo: string; logoIncludesName?: boolean }>({ agencyName: "", logo: "" });
   const [username, setUsername] = useState(() => {
     try {
       return localStorage.getItem("agency-finance:last-user") ?? "";
@@ -66,12 +67,8 @@ export default function Login() {
     <div className="login">
       <section className="login-brand" aria-label={name}>
         <div className="login-brand-top">
-          {brand.logo ? (
-            <span className="login-logo"><img src={brand.logo} alt="" /></span>
-          ) : (
-            <span className="login-mark" aria-hidden>₹</span>
-          )}
-          <span className="login-name">{name}</span>
+          <span className="login-logo"><img src={brand.logo || DEFAULT_LOGO} alt={name} /></span>
+          {brand.logo && brand.logoIncludesName === false && <span className="login-name">{name}</span>}
         </div>
         <div className="login-pitch">
           <h2>Your agency's finances, in one place.</h2>
