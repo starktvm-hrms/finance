@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import type { Estimate } from "../types";
+import type { SheetDoc, SheetKind } from "../types";
 import { useStore } from "../lib/store";
 import { docFormat } from "../lib/util";
 import { RichTextView } from "./SafeHtml";
-import { Description, EstimateFooter, EstimateTotals, Letterhead, SignatureBlock, dmyDate, plainAmount } from "./ProductionEstimate";
+import { Description, EstimateFooter, EstimateTotals, Letterhead, SignatureBlock, dmyDate, dueDateOf, isPaid, plainAmount, sheetLabels } from "./ProductionEstimate";
 
 /** While a media estimate is on screen, printing uses A4 landscape. */
 export function useLandscapePrint() {
@@ -21,8 +21,9 @@ export function useLandscapePrint() {
  * the letterhead repeats on every page, and each line shows the platform with
  * quantity, unit and amount, then the work description underneath.
  */
-export default function MediaEstimate({ est }: { est: Estimate }) {
+export default function MediaEstimate({ est, kind = "estimate" }: { est: SheetDoc; kind?: SheetKind }) {
   useLandscapePrint();
+  const labels = sheetLabels(kind, true);
   const { data } = useStore();
   const s = data.settings;
   const client = data.clients.find((c) => c.id === est.clientId);
@@ -32,7 +33,7 @@ export default function MediaEstimate({ est }: { est: Estimate }) {
   const address = (est.clientAddress ?? client?.address ?? "").trim();
 
   return (
-    <article className="pe-doc me-doc print-area" aria-label={`Media estimate ${est.number}`}>
+    <article className="pe-doc me-doc print-area" aria-label={`${kind === "invoice" ? "Media invoice" : "Media estimate"} ${est.number}`}>
       <table className="me-page">
         <thead>
           <tr><td><Letterhead /></td></tr>
@@ -40,10 +41,11 @@ export default function MediaEstimate({ est }: { est: Estimate }) {
         <tbody>
           <tr>
             <td>
-              <h1 className="pe-title">MEDIA ESTIMATE</h1>
+              <h1 className="pe-title">{labels.title}</h1>
+              {isPaid(est) && <div className="pe-paid">PAID</div>}
 
               <div className="me-meta">
-                <span className="l">Est No. :</span><strong className="v">{est.number || "—"}</strong>
+                <span className="l">{labels.no}</span><strong className="v">{est.number || "—"}</strong>
                 <span className="l2">Date :</span><strong className="v2">{dmyDate(est.issueDate)}</strong>
                 <span className="lt">To:</span>
                 <span className="vt">
@@ -55,6 +57,7 @@ export default function MediaEstimate({ est }: { est: Estimate }) {
                 <span className="l2">Date :</span><span className="v2">{dmyDate(job?.startDate ?? "")}</span>
                 <span className="lt">GSTIN:</span><span className="vt">{client?.taxId ?? ""}</span>
 
+                {kind === "invoice" && <><span className="l">Due Date :</span><span className="v wide">{dmyDate(dueDateOf(est))}</span></>}
                 <span className="l">Job Type :</span><span className="v wide">{est.jobType ?? ""}</span>
                 <span className="lt">PAN No.:</span><span className="vt">{client?.pan ?? ""}</span>
 
@@ -93,7 +96,7 @@ export default function MediaEstimate({ est }: { est: Estimate }) {
               <div className="me-closing">
                 <EstimateTotals est={est} />
                 <SignatureBlock />
-                <EstimateFooter />
+                <EstimateFooter kind={kind} />
               </div>
             </td>
           </tr>

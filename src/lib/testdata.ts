@@ -1,4 +1,5 @@
 import type { AppData, Client, Project } from "../types";
+import { makeJobNumber } from "./jobno";
 
 const B36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -74,7 +75,7 @@ export function numberJobs(data: AppData): { jobs: Project[]; next: number } {
   const jobs = [...data.projects]
     .filter((p) => !p.number?.trim())
     .sort((a, b) => (a.startDate || a.createdAt).localeCompare(b.startDate || b.createdAt))
-    .map((p) => ({ ...p, number: `${s.jobPrefix}${String(next++).padStart(4, "0")}` }));
+    .map((p) => ({ ...p, number: makeJobNumber(s, data.clients.find((c) => c.id === p.clientId), p.startDate || p.createdAt.slice(0, 10), next++) }));
   return { jobs, next };
 }
 

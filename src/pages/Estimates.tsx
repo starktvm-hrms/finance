@@ -1,19 +1,15 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { COUNTRIES, ESTIMATE_TYPES, type CountryCode, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { COUNTRIES, ESTIMATE_TYPES, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
-import { addDays, amountInWords, docFormat, financialYear, fmtDate, gstSplit, gstState, invoiceTotals, money, today, uid } from "../lib/util";
+import { addDays, docFormat, financialYear, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
 import MediaEstimate from "../components/MediaEstimate";
-import ProductionEstimate, { EstimateFooter, Letterhead, SignatureBlock, dmyDate, plainAmount } from "../components/ProductionEstimate";
-import { AutoTextarea, Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
+import ProductionEstimate from "../components/ProductionEstimate";
+import SheetForm from "../components/SheetForm";
+import { estimateType, typeInfo } from "../lib/doctype";
+import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
-const LazyEditor = lazy(() => import("../components/RichText"));
-const RichTextEditor = (props: { value: string; onChange: (html: string) => void; placeholder?: string; label: string }) => (
-  <Suspense fallback={<div className="rte rte-loading muted small">Loading editor…</div>}>
-    <LazyEditor {...props} />
-  </Suspense>
-);
 
 export const ESTIMATE_STATUS: Record<EstimateStatus | "expired", { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -33,9 +29,7 @@ const FILTERS: { id: EstimateStatus | "all"; label: string }[] = [
   { id: "rejected", label: "Rejected" },
 ];
 
-/** Estimates made before types existed count as "Project". */
-export const estimateType = (e: Estimate): EstimateType => e.type ?? "project";
-const typeInfo = (id: string) => ESTIMATE_TYPES.find((t) => t.id === id);
+export { estimateType };
 const TYPE_TABS = [{ id: "all", label: "All", hint: "Every estimate, of every type" }, ...ESTIMATE_TYPES];
 
 const displayStatus = (e: Estimate) => (e.status === "sent" && e.validUntil && e.validUntil < today() ? "expired" : e.status);
@@ -180,6 +174,14 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       notes: e.notes,
       country: e.country,
       roundOff: e.roundOff,
+      type: e.type,
+      title: e.title,
+      jobType: e.jobType,
+      productLabel: e.productLabel,
+      clientAddress: e.clientAddress,
+      header: e.header,
+      remarks: e.remarks,
+      discountPct: e.discountPct,
       paidDate: "",
       createdAt: new Date().toISOString(),
     };
@@ -202,7 +204,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     </>
   );
 
-  if (edit) return <EstimateForm initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={save} />;
+  if (edit) return <SheetForm kind="estimate" initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={(d) => save(d as Estimate)} />;
 
   return (
     <div className="page">
@@ -310,273 +312,3 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   );
 }
 
-function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate; isNew: boolean; onSave: (e: Estimate) => void; onCancel: () => void }) {
-  const { data } = useStore();
-  const s = data.settings;
-  const [est, setEst] = useState(initial);
-  const client = data.clients.find((c) => c.id === est.clientId);
-  const job = data.projects.find((p) => p.id === est.projectId);
-  const jobs = data.projects.filter((p) => p.clientId === est.clientId);
-  const fmt = docFormat(est.country, s);
-  const t = invoiceTotals(est);
-  const type = typeInfo(estimateType(est))!;
-  const split = gstSplit(gstState(s.taxId, s.stateCode), client?.taxId, est.taxRate);
-  const jobTypes = [...new Set(data.estimates.map((e) => e.jobType).filter((x): x is string => !!x))].sort();
-  const isMedia = estimateType(est) === "media";
-  // Media lines are booked with a publication / channel / platform from the vendor lists.
-  const platforms = data.vendors.filter((v) => v.active && v.category !== "suppliers").map((v) => v.name).sort();
-  const removeLine = (id: string) => set({ items: est.items.filter((x) => x.id !== id) });
-  const previewNo = `${estimateType(est) === "media" ? s.mediaEstimatePrefix : s.productionEstimatePrefix}/${financialYear(est.issueDate || today())}/${s.nextEstimateNumber}`;
-
-  /** Keep a percentage discount in step with the lines. */
-  const withDiscount = (e: Estimate): Estimate => {
-    if (!e.discountPct) return e;
-    const sub = invoiceTotals({ ...e, discount: 0 }).subtotal;
-    return { ...e, discount: Math.round(sub * e.discountPct) / 100 };
-  };
-  const set = (patch: Partial<Estimate>) => setEst((e) => withDiscount({ ...e, ...patch }));
-  const setItem = (id: string, patch: Partial<Estimate["items"][number]>) =>
-    set({ items: est.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
-
-  const pickClient = (id: string) => {
-    const c = data.clients.find((x) => x.id === id);
-    set({ clientId: id, projectId: "", clientAddress: c?.address ?? "" });
-  };
-  const pickJob = (id: string) => {
-    const j = data.projects.find((p) => p.id === id);
-    set({
-      projectId: id,
-      title: est.title || j?.name || "",
-      productLabel: est.productLabel || [j?.product, j?.subProduct].filter(Boolean).join(" "),
-      jobType: est.jobType || j?.jobType || "",
-    });
-  };
-  const pickCountry = (code: CountryCode) =>
-    set({ country: code, taxRate: code === "IN" ? (est.country === "IN" ? est.taxRate : s.defaultTaxRate) : 0 });
-
-  const dirty = JSON.stringify(est) !== JSON.stringify(initial);
-  const leave = () => {
-    if (dirty && !window.confirm(isNew ? "Discard this new estimate?" : "Discard your changes to this estimate?")) return;
-    onCancel();
-  };
-
-  return (
-    <div className="page">
-      <div className="page-head">
-        <h1 className="back-title">
-          <button type="button" className="icon-btn back-btn" onClick={leave} aria-label="Back to estimates">‹</button>
-          {isNew ? `Add ${type.label} Estimate` : `Edit ${type.label} Estimate ${est.number}`}
-        </h1>
-      </div>
-
-      <form className="estimate-editor" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
-        {/* The sheet: everything here prints, laid out like the printed estimate. */}
-        <div className={`pe-doc pe-edit ${isMedia ? "me-doc me-edit" : ""}`}>
-          <div className="pe-fixed" title="From Settings → Agency / Letterhead"><Letterhead /></div>
-
-          <h1 className="pe-title">{isMedia ? "MEDIA ESTIMATE" : "ESTIMATE"}</h1>
-
-          <div className="pe-meta">
-            <dl className="pe-meta-left">
-              <dt>Est No. :</dt>
-              <dd>
-                <input
-                  aria-label="Estimate number"
-                  value={est.number}
-                  onChange={(e) => set({ number: e.target.value })}
-                  placeholder={`${previewNo} (auto)`}
-                  title="Leave blank to get the next number in the series"
-                />
-              </dd>
-              <dt>Date :</dt>
-              <dd><input required type="date" aria-label="Estimate date" value={est.issueDate} onChange={(e) => set({ issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></dd>
-              <dt>Job No. :</dt>
-              <dd>
-                <select aria-label="Job" value={est.projectId} onChange={(e) => pickJob(e.target.value)} disabled={!est.clientId}>
-                  <option value="">{est.clientId ? "Select…" : "Client first"}</option>
-                  {jobs.map((p) => <option key={p.id} value={p.id}>{p.number ?? p.name}</option>)}
-                </select>
-              </dd>
-              <dt>Date :</dt>
-              <dd><span className="pe-auto">{job ? dmyDate(job.startDate) : "—"}</span></dd>
-              <dt>Job Type :</dt>
-              <dd className="span3">
-                <input aria-label="Job type" list="job-types" value={est.jobType ?? ""} onChange={(e) => set({ jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
-                <datalist id="job-types">{jobTypes.map((x) => <option key={x} value={x} />)}</datalist>
-              </dd>
-              <dt>Product :</dt>
-              <dd className="span3"><input aria-label="Product" value={est.productLabel ?? ""} onChange={(e) => set({ productLabel: e.target.value })} placeholder="From the job's product" /></dd>
-            </dl>
-            <dl className="pe-meta-right">
-              <dt>To:</dt>
-              <dd className="pe-to">
-                <select required aria-label="Client" value={est.clientId} onChange={(e) => pickClient(e.target.value)}>
-                  <option value="" disabled>Select client…</option>
-                  {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <AutoTextarea aria-label="Client address" value={est.clientAddress ?? ""} onChange={(e) => set({ clientAddress: e.target.value })} placeholder="Billing address" />
-              </dd>
-              <dt>GSTIN:</dt><dd><span className="pe-auto">{client?.taxId || "—"}</span></dd>
-              <dt>PAN No.:</dt><dd><span className="pe-auto">{client?.pan || "—"}</span></dd>
-            </dl>
-          </div>
-
-          <div className="pe-rich-edit">
-            <RichTextEditor label="Header (optional, prints above the table)" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Header (optional) — prints above the table" />
-          </div>
-
-          {isMedia ? (
-            <table className="me-table me-table-edit">
-              <thead>
-                <tr>
-                  <th className="me-sl">Sl. No.</th><th>Platform</th><th className="me-q">Quantity</th><th className="me-u">Unit</th>
-                  <th className="pe-amt">Amount({fmt.currency})</th><th className="pe-x" />
-                </tr>
-              </thead>
-              {est.items.map((it, i) => (
-                <tbody key={it.id} className="me-item">
-                  <tr>
-                    <td className="me-sl">{i + 1}</td>
-                    <td><input list="media-platforms" aria-label={`Line ${i + 1} platform`} value={it.platform ?? ""} onChange={(e) => setItem(it.id, { platform: e.target.value })} placeholder="e.g. Facebook India Online Services Pvt. Ltd." /></td>
-                    <td className="me-q"><input type="number" min={0} step="0.01" aria-label={`Line ${i + 1} quantity`} value={it.quantity} onChange={(e) => setItem(it.id, { quantity: Number(e.target.value) })} /></td>
-                    <td className="me-u"><input aria-label={`Line ${i + 1} unit`} value={it.unit ?? ""} onChange={(e) => setItem(it.id, { unit: e.target.value })} placeholder="1" /></td>
-                    <td className="pe-amt">
-                      <input className="num" type="number" min={0} step="0.01" aria-label={`Line ${i + 1} amount`} value={it.rate || ""} placeholder="0.00" onChange={(e) => setItem(it.id, { rate: Number(e.target.value) })} />
-                      {Number(it.quantity) !== 1 && <div className="pe-qty">× {it.quantity} = {plainAmount(it.quantity * it.rate, fmt.locale)}</div>}
-                    </td>
-                    <td className="pe-x" rowSpan={2}>
-                      <button type="button" className="icon-btn" disabled={est.items.length === 1} onClick={() => removeLine(it.id)} aria-label={`Remove line ${i + 1}`}>×</button>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td />
-                    <td colSpan={3}>
-                      <AutoTextarea
-                        required
-                        aria-label={`Line ${i + 1} description`}
-                        value={it.description}
-                        onChange={(e) => setItem(it.id, { description: e.target.value })}
-                        placeholder={"What the cost covers (prints bold)\n• detail lines start with •"}
-                      />
-                    </td>
-                    <td />
-                  </tr>
-                </tbody>
-              ))}
-            </table>
-          ) : (
-          <table className="pe-table pe-table-edit">
-            <thead>
-              <tr><th className="pe-sl">Sl. No.</th><th>Description</th><th className="pe-amt">Amount({fmt.currency})</th><th className="pe-x" /></tr>
-            </thead>
-            <tbody>
-              {est.items.map((it, i) => (
-                <tr key={it.id}>
-                  <td className="pe-sl">{i + 1}</td>
-                  <td>
-                    <AutoTextarea
-                      required
-                      aria-label={`Line ${i + 1} description`}
-                      value={it.description}
-                      onChange={(e) => setItem(it.id, { description: e.target.value })}
-                      placeholder={"Heading of the work (prints bold)\n• detail lines start with •"}
-                    />
-                  </td>
-                  <td className="pe-amt">
-                    <input className="num" type="number" min={0} step="0.01" aria-label={`Line ${i + 1} amount`} value={it.rate || ""} placeholder="0.00" onChange={(e) => setItem(it.id, { rate: Number(e.target.value) })} />
-                    <label className="pe-qty-edit">
-                      Qty <input type="number" min={0} step="0.01" aria-label={`Line ${i + 1} quantity`} value={it.quantity} onChange={(e) => setItem(it.id, { quantity: Number(e.target.value) })} />
-                    </label>
-                    {Number(it.quantity) !== 1 && <div className="pe-qty">= {plainAmount(it.quantity * it.rate, fmt.locale)}</div>}
-                  </td>
-                  <td className="pe-x">
-                    <button type="button" className="icon-btn" disabled={est.items.length === 1} onClick={() => set({ items: est.items.filter((x) => x.id !== it.id) })} aria-label={`Remove line ${i + 1}`}>×</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          )}
-          <datalist id="media-platforms">{platforms.map((n) => <option key={n} value={n} />)}</datalist>
-          <button type="button" className="btn ghost pe-add" onClick={() => set({ items: [...est.items, newLine()] })}>+ Add line</button>
-
-          {isMedia && (
-            <div className="pe-rich-edit me-note-edit">
-              <RichTextEditor key="note" label="Note (optional, prints under the lines)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Note (optional) — e.g. Please release 60% of the grand total as part payment" />
-            </div>
-          )}
-
-          <div className="pe-totals">
-            <div className="pe-words">Amount in Words: {amountInWords(t.total, fmt.currency)}</div>
-            <dl>
-              <dt>Total:</dt><dd>{plainAmount(t.subtotal, fmt.locale)}</dd>
-              <dt className="pe-inline">
-                Discount
-                <input type="number" min={0} max={100} step="0.01" aria-label="Discount percent" value={est.discountPct || ""} placeholder="0"
-                  onChange={(e) => set({ discountPct: Number(e.target.value) || 0, ...(Number(e.target.value) ? {} : { discount: 0 }) })} />%:
-              </dt>
-              <dd>
-                <input className="num" type="number" min={0} step="0.01" aria-label="Discount amount" value={est.discount || ""} placeholder="0.00"
-                  onChange={(e) => setEst({ ...est, discount: Number(e.target.value) || 0, discountPct: 0 })} />
-              </dd>
-              {t.discount > 0 && <><dt>Taxable Value:</dt><dd>{plainAmount(t.net, fmt.locale)}</dd></>}
-              {split === "cgst" && (
-                <>
-                  <dt className="pe-inline">SGST ({est.taxRate / 2}%):</dt><dd>{plainAmount(t.tax / 2, fmt.locale)}</dd>
-                  <dt>CGST ({est.taxRate / 2}%):</dt><dd>{plainAmount(t.tax / 2, fmt.locale)}</dd>
-                </>
-              )}
-              {split === "igst" && <><dt>IGST ({est.taxRate}%):</dt><dd>{plainAmount(t.tax, fmt.locale)}</dd></>}
-              <dt className="pe-inline">
-                <label className="pe-check"><input type="checkbox" checked={!!est.roundOff} onChange={(e) => set({ roundOff: e.target.checked })} /> Round Off:</label>
-              </dt>
-              <dd>{plainAmount(t.roundOff, fmt.locale)}</dd>
-              <dt className="pe-grand">Grand Total:</dt><dd className="pe-grand">{plainAmount(t.total, fmt.locale)}</dd>
-            </dl>
-          </div>
-
-          {!isMedia && <div className="pe-rich-edit">
-            <RichTextEditor key="remarks" label="Remarks (optional, prints below the totals)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Remarks (optional) — any important message to add" />
-          </div>}
-
-          <div className="pe-fixed" title="From Settings → Letterhead & bank details">
-            <SignatureBlock />
-            <EstimateFooter />
-          </div>
-        </div>
-
-        {/* Details that don't print, or that set how the sheet is worked out. */}
-        <aside className="card estimate-side">
-          <Field label="Title (for your lists) *"><input required value={est.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. HLL Parivarthan folder" /></Field>
-          <Field label="Type">
-            <select value={estimateType(est)} onChange={(e) => set({ type: e.target.value as EstimateType })}>
-              {ESTIMATE_TYPES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Status">
-            <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; set({ status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent – awaiting approval</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </Field>
-          <Field label="Country / currency">
-            <select required value={est.country ?? ""} onChange={(e) => pickCountry(e.target.value as CountryCode)}>
-              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label} ({c.currency})</option>)}
-            </select>
-          </Field>
-          <Field label="GST rate (%)"><input type="number" min={0} step="0.01" value={est.taxRate} onChange={(e) => set({ taxRate: Number(e.target.value) })} /></Field>
-          <Field label="Valid until"><input required type="date" value={est.validUntil} onChange={(e) => set({ validUntil: e.target.value })} /></Field>
-          <p className="muted small">
-            {split === "cgst" ? "Same state as you: GST is split into SGST + CGST." : split === "igst" ? "Client is in another state: IGST applies." : "No GST on this estimate."}
-          </p>
-          <div className="estimate-side-actions">
-            <button className="btn primary">{isNew ? "Save estimate" : "Save changes"}</button>
-            <button type="button" className="btn" onClick={leave}>Cancel</button>
-          </div>
-        </aside>
-      </form>
-    </div>
-  );
-}

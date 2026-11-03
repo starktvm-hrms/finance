@@ -123,6 +123,9 @@ export default function SettingsPage() {
           <Field label="Estimate terms (one per line; {days} = validity, {agency} = agency name)" span={2}>
             <textarea rows={3} value={s.estimateTerms} onChange={(e) => updateSettings({ estimateTerms: e.target.value })} />
           </Field>
+          <Field label="Invoice terms (one per line; {days} = payment terms, {agency} = agency name)" span={2}>
+            <textarea rows={3} value={s.invoiceTerms ?? ""} onChange={(e) => updateSettings({ invoiceTerms: e.target.value })} />
+          </Field>
           <Field label="Signature labels (comma-separated)" span={2}><input value={s.signatureLabels} onChange={(e) => updateSettings({ signatureLabels: e.target.value })} /></Field>
         </div>
       </div>
@@ -147,7 +150,13 @@ export default function SettingsPage() {
           <Field label="Media estimate prefix"><input value={s.mediaEstimatePrefix} onChange={(e) => updateSettings({ mediaEstimatePrefix: e.target.value })} /></Field>
           <Field label={`Next estimate number (e.g. ${s.productionEstimatePrefix}/26-27/${s.nextEstimateNumber})`}><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
           <Field label="Estimates valid for (days)"><input type="number" min={1} value={s.estimateValidDays} onChange={(e) => updateSettings({ estimateValidDays: Number(e.target.value) })} /></Field>
-          <Field label="Job prefix"><input value={s.jobPrefix} onChange={(e) => updateSettings({ jobPrefix: e.target.value })} /></Field>
+          <Field label="Job number style">
+            <select value={s.jobNumberStyle ?? "client"} onChange={(e) => updateSettings({ jobNumberStyle: e.target.value as "client" | "prefix" })}>
+              <option value="client">Client code + year + month + number (e.g. HLL26100417)</option>
+              <option value="prefix">Prefix + number (e.g. JOB-0001)</option>
+            </select>
+          </Field>
+          {s.jobNumberStyle === "prefix" && <Field label="Job prefix"><input value={s.jobPrefix} onChange={(e) => updateSettings({ jobPrefix: e.target.value })} /></Field>}
           <Field label="Next job number"><input type="number" min={1} value={s.nextJobNumber} onChange={(e) => updateSettings({ nextJobNumber: Number(e.target.value) })} /></Field>
           <Field label="Department heads (one per line; they can approve new jobs)" span={2}>
             <textarea rows={3} defaultValue={s.departmentHeads.join("\n")} placeholder={"Priya (Creative)\nRahul (Media)"}

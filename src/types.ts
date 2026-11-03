@@ -16,6 +16,7 @@ export interface Settings {
   paymentTermsDays: number;
   jobPrefix: string;
   nextJobNumber: number;
+  jobNumberStyle?: "client" | "prefix"; // client: HLL26100417 (default); prefix: JOB-0001
   departmentHeads: string[]; // people who can approve new jobs
   logo: string; // uploaded data-URL logo ("" = the logo shipped with the app)
   logoIncludesName?: boolean; // uploaded logo already shows the agency name (default true)
@@ -35,6 +36,7 @@ export interface Settings {
   bankIfsc: string;
   bankSwift: string;
   estimateTerms: string; // one per line; {days} = validity, {agency} = agency name
+  invoiceTerms?: string; // one per line; {days} = payment terms, {agency} = agency name
   signatureLabels: string; // comma-separated, printed above the signature lines
   productionEstimatePrefix: string; // PE → PE/26-27/369
   mediaEstimatePrefix: string; // ME → ME/26-27/370
@@ -67,6 +69,7 @@ export interface Client {
   address: string;
   taxId: string;
   pan?: string;
+  code?: string; // short code used in job numbers (HLL, DT); worked out from the name when blank
   products?: ClientProduct[]; // brands/products the agency works on for this client
   notes: string;
   createdAt: string;
@@ -153,8 +156,21 @@ export interface Invoice {
   paidDate: string;
   country?: CountryCode;
   roundOff?: boolean;
+  // Same printed fields as estimates (copied from the estimate it was raised from)
+  type?: EstimateType;
+  title?: string;
+  jobType?: string;
+  productLabel?: string;
+  clientAddress?: string;
+  header?: string;
+  remarks?: string;
+  discountPct?: number;
   createdAt: string;
 }
+
+/** Estimates and invoices share one sheet layout (form and print). */
+export type SheetDoc = Estimate | Invoice;
+export type SheetKind = "estimate" | "invoice";
 
 /** Estimate types, shown as tabs on the Estimates page. */
 export const ESTIMATE_TYPES = [

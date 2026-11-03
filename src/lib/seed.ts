@@ -33,6 +33,8 @@ export const defaultSettings: Settings = {
   estimateTerms:
     "This estimate is valid only for a period of {days} days\nPart payment/advance, if any, should be by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT",
   signatureLabels: "Authorized Signatory, AE, AS",
+  invoiceTerms:
+    "Payment is due within {days} days of the invoice date\nPayment by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT\nPlease quote the invoice number with your payment",
   productionEstimatePrefix: "PE",
   mediaEstimatePrefix: "ME",
   paymentTermsDays: 15,
