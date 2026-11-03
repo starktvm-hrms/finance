@@ -83,7 +83,16 @@ export default function Clients() {
             <Field label="Email"><input type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="Phone"><input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
             <Field label="Tax ID / GSTIN"><input value={edit.taxId} onChange={(e) => setEdit({ ...edit, taxId: e.target.value })} /></Field>
+            <Field label="PAN"><input value={edit.pan ?? ""} onChange={(e) => setEdit({ ...edit, pan: e.target.value.toUpperCase() })} maxLength={10} /></Field>
             <Field label="Billing address" span={2}><textarea rows={2} value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
+            <Field label="Products (one per line — Product: sub-product, sub-product)" span={2}>
+              <textarea
+                rows={3}
+                placeholder={"Detergent: Liquid, Powder\nShampoo: Anti-dandruff"}
+                defaultValue={(edit.products ?? []).map((p) => (p.subProducts.length ? `${p.name}: ${p.subProducts.join(", ")}` : p.name)).join("\n")}
+                onChange={(e) => setEdit({ ...edit, products: parseProducts(e.target.value) })}
+              />
+            </Field>
             <Field label="Notes" span={2}><textarea rows={2} value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
             <div className="form-actions span2">
               <button type="button" className="btn" onClick={() => setEdit(null)}>Cancel</button>
@@ -94,4 +103,18 @@ export default function Clients() {
       )}
     </div>
   );
+}
+
+/** "Product: sub, sub" per line → products list (blank lines ignored, duplicates merged). */
+function parseProducts(text: string) {
+  const out: { name: string; subProducts: string[] }[] = [];
+  for (const line of text.split("\n")) {
+    const [name, subs = ""] = line.split(":");
+    if (!name?.trim()) continue;
+    const subProducts = subs.split(",").map((x) => x.trim()).filter(Boolean);
+    const existing = out.find((p) => p.name.toLowerCase() === name.trim().toLowerCase());
+    if (existing) existing.subProducts = [...new Set([...existing.subProducts, ...subProducts])];
+    else out.push({ name: name.trim(), subProducts });
+  }
+  return out;
 }

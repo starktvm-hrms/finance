@@ -18,7 +18,7 @@ export const PROJECT_STATUS: Record<ProjectStatus, { label: string; tone: string
 type JobFilter = ProjectStatus | "all" | "needs_estimate";
 
 export default function Projects({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove } = useStore();
+  const { data, upsert, remove, updateSettings } = useStore();
   const s = data.settings;
   const [edit, setEdit] = useState<Project | null>(null);
   const [status, setStatus] = useState<JobFilter>(() => {
@@ -28,7 +28,39 @@ export default function Projects({ params }: { params: URLSearchParams }) {
   const latestEstimate = (jobId: string) =>
     data.estimates.filter((e) => e.projectId === jobId).sort((a, b) => b.issueDate.localeCompare(a.issueDate))[0];
 
-  const blank = (): Project => ({ id: uid(), clientId: data.clients[0]?.id ?? "", name: "", status: "lead", budget: 0, startDate: today(), endDate: "", notes: "", createdAt: new Date().toISOString() });
+  const blank = (): Project => ({
+    id: uid(), clientId: "", contactPerson: "", product: "", subProduct: "", name: "", status: "lead",
+    budget: 0, startDate: today(), endDate: "", notes: "", createdAt: new Date().toISOString(),
+  });
+
+  const saveJob = (job: Project, sendForApproval: boolean, head: string) => {
+    const isNew = !data.projects.some((p) => p.id === job.id);
+    let next: Project = { ...job, name: job.name.trim(), product: job.product?.trim(), subProduct: job.subProduct?.trim() };
+    if (isNew) {
+      next.number = `${s.jobPrefix}${String(s.nextJobNumber).padStart(4, "0")}`;
+      updateSettings({ nextJobNumber: s.nextJobNumber + 1 });
+    }
+    if (sendForApproval && head && (next.approval?.head !== head || next.approval?.status === "rejected")) {
+      next.approval = { head, status: "pending", decidedDate: "" };
+    } else if (!sendForApproval) {
+      next = { ...next, approval: undefined };
+    }
+    upsert("projects", next);
+    // Remember new products / sub-products on the client so they can be picked next time.
+    const client = data.clients.find((c) => c.id === next.clientId);
+    if (client && next.product) {
+      const products = [...(client.products ?? [])];
+      const i = products.findIndex((p) => p.name.toLowerCase() === next.product!.toLowerCase());
+      if (i < 0) products.push({ name: next.product, subProducts: next.subProduct ? [next.subProduct] : [] });
+      else if (next.subProduct && !products[i].subProducts.some((x) => x.toLowerCase() === next.subProduct!.toLowerCase()))
+        products[i] = { ...products[i], subProducts: [...products[i].subProducts, next.subProduct] };
+      if (i < 0 || products[i] !== client.products?.[i]) upsert("clients", { ...client, products });
+    }
+    setEdit(null);
+  };
+
+  const decideApproval = (p: Project, status: "approved" | "rejected") =>
+    p.approval && upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today() } });
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const rows = data.projects.filter((p) => status === "all" || p.status === status || (status === "needs_estimate" && needsEstimate(data, p.id)));
 
@@ -72,8 +104,30 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                 const pct = p.budget ? Math.min(100, Math.round((f.invoiced / p.budget) * 100)) : 0;
                 return (
                   <tr key={p.id} className="clickable" onClick={() => setEdit(p)}>
-                    <td><strong>{p.name}</strong><div className="muted small">{clientName(p.clientId)} · {fmtDate(p.startDate, s.locale)}</div></td>
-                    <td><Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge></td>
+                    <td>
+                      <strong>{p.name}</strong>
+                      <div className="muted small">
+                        {[p.number, clientName(p.clientId), [p.product, p.subProduct].filter(Boolean).join(" › "), fmtDate(p.startDate, s.locale)].filter(Boolean).join(" · ")}
+                      </div>
+                    </td>
+                    <td onClick={(e) => p.approval?.status === "pending" && e.stopPropagation()}>
+                      <Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge>
+                      {p.approval && (
+                        <div className="small approval">
+                          {p.approval.status === "pending" ? (
+                            <>
+                              <span className="warn">Awaiting {p.approval.head}</span>
+                              <button className="btn ghost good" onClick={() => decideApproval(p, "approved")}>Approve</button>
+                              <button className="btn ghost danger" onClick={() => decideApproval(p, "rejected")}>Reject</button>
+                            </>
+                          ) : (
+                            <span className={p.approval.status === "approved" ? "good" : "bad"}>
+                              {p.approval.status === "approved" ? "Approved" : "Rejected"} by {p.approval.head}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const est = latestEstimate(p.id);
@@ -104,32 +158,72 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
-      {edit && (
-        <Modal title={data.projects.some((p) => p.id === edit.id) ? "Edit job" : "New job"} onClose={() => setEdit(null)}>
-          <form className="form" onSubmit={(e) => { e.preventDefault(); upsert("projects", edit); setEdit(null); }}>
-            <Field label="Job name" span={2}><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
-            <Field label="Client">
-              <select required value={edit.clientId} onChange={(e) => setEdit({ ...edit, clientId: e.target.value })}>
-                {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
+      {edit && <JobForm initial={edit} isNew={!data.projects.some((p) => p.id === edit.id)} onCancel={() => setEdit(null)} onSave={saveJob} />}
+    </div>
+  );
+}
+
+function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew: boolean; onSave: (p: Project, sendForApproval: boolean, head: string) => void; onCancel: () => void }) {
+  const { data } = useStore();
+  const s = data.settings;
+  const [job, setJob] = useState(initial);
+  const [approve, setApprove] = useState(!!initial.approval);
+  const [head, setHead] = useState(initial.approval?.head ?? "");
+  const client = data.clients.find((c) => c.id === job.clientId);
+  const products = client?.products ?? [];
+  const subProducts = products.find((p) => p.name.toLowerCase() === (job.product ?? "").trim().toLowerCase())?.subProducts ?? [];
+  const contacts = [client?.contactName, ...data.projects.filter((p) => p.clientId === job.clientId).map((p) => p.contactPerson)]
+    .filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
+  const heads = s.departmentHeads.filter(Boolean);
+
+  return (
+    <Modal title={isNew ? "Add Job" : `Edit job ${job.number ?? ""}`} onClose={onCancel}>
+      <form className="form form-rows" onSubmit={(e) => { e.preventDefault(); onSave(job, approve, head); }}>
+        <Field label="Client *" span={2}>
+          <select required autoFocus value={job.clientId} onChange={(e) => setJob({ ...job, clientId: e.target.value, product: "", subProduct: "", contactPerson: "" })}>
+            <option value="" disabled>Select…</option>
+            {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Contact person" span={2}>
+          <input list="job-contacts" value={job.contactPerson ?? ""} onChange={(e) => setJob({ ...job, contactPerson: e.target.value })} placeholder="Enter name of person" />
+          <datalist id="job-contacts">{contacts.map((c) => <option key={c} value={c} />)}</datalist>
+        </Field>
+        <Field label="Product *" span={2}>
+          <input required list="job-products" disabled={!job.clientId} value={job.product ?? ""} onChange={(e) => setJob({ ...job, product: e.target.value, subProduct: "" })} placeholder={job.clientId ? "Select or type a new product" : "Choose a client first"} />
+          <datalist id="job-products">{products.map((p) => <option key={p.name} value={p.name} />)}</datalist>
+        </Field>
+        <Field label="Sub-product *" span={2}>
+          <input required list="job-subproducts" disabled={!job.product?.trim()} value={job.subProduct ?? ""} onChange={(e) => setJob({ ...job, subProduct: e.target.value })} placeholder={job.product?.trim() ? "Select or type a new sub-product" : "Choose a product first"} />
+          <datalist id="job-subproducts">{subProducts.map((p) => <option key={p} value={p} />)}</datalist>
+        </Field>
+        <Field label="Title *" span={2}><input required value={job.name} onChange={(e) => setJob({ ...job, name: e.target.value })} placeholder="Enter title of the work" /></Field>
+        <Field label="Description" span={2}><textarea rows={3} value={job.notes} onChange={(e) => setJob({ ...job, notes: e.target.value })} placeholder="Enter description" /></Field>
+        <Field label="Date" span={2}><input type="date" value={job.startDate} onChange={(e) => setJob({ ...job, startDate: e.target.value })} /></Field>
+        <label className="check span2"><input type="checkbox" checked={approve} onChange={(e) => setApprove(e.target.checked)} /> Send for approval</label>
+        <Field label="Department head" span={2}>
+          <select required={approve} disabled={!approve} value={head} onChange={(e) => setHead(e.target.value)}>
+            <option value="">{heads.length ? "Select…" : "Add department heads in Settings"}</option>
+            {heads.map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </Field>
+        <details className="span2 more" open={!isNew}>
+          <summary>Status, budget and end date</summary>
+          <div className="form">
             <Field label="Status">
-              <select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value as ProjectStatus })}>
+              <select value={job.status} onChange={(e) => setJob({ ...job, status: e.target.value as ProjectStatus })}>
                 {Object.entries(PROJECT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </Field>
-            <Field label={`Budget (${s.currency})`}><input type="number" min={0} step="0.01" value={edit.budget} onChange={(e) => setEdit({ ...edit, budget: Number(e.target.value) })} /></Field>
-            <div />
-            <Field label="Start date"><input type="date" value={edit.startDate} onChange={(e) => setEdit({ ...edit, startDate: e.target.value })} /></Field>
-            <Field label="End date"><input type="date" value={edit.endDate} onChange={(e) => setEdit({ ...edit, endDate: e.target.value })} /></Field>
-            <Field label="Notes" span={2}><textarea rows={2} value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
-            <div className="form-actions span2">
-              <button type="button" className="btn" onClick={() => setEdit(null)}>Cancel</button>
-              <button className="btn primary">Save job</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </div>
+            <Field label={`Budget (${s.currency})`}><input type="number" min={0} step="0.01" value={job.budget || ""} onChange={(e) => setJob({ ...job, budget: Number(e.target.value) })} /></Field>
+            <Field label="End date"><input type="date" value={job.endDate} onChange={(e) => setJob({ ...job, endDate: e.target.value })} /></Field>
+          </div>
+        </details>
+        <div className="form-actions span2">
+          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+          <button className="btn primary">Save job</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ESTIMATE_TYPES, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { COUNTRIES, ESTIMATE_TYPES, type CountryCode, type Estimate, type EstimateStatus, type EstimateType, type Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
-import { addDays, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
+import { addDays, docFormat, fmtDate, invoiceTotals, money, today, uid } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
-import { DocumentView, ItemsEditor, Totals, newLine } from "../components/Doc";
+import { DocumentView, ItemsEditor, newLine } from "../components/Doc";
+// The editor (Quill) is only downloaded when an estimate form is opened.
+const LazyEditor = lazy(() => import("../components/RichText"));
+const RichTextEditor = (props: { value: string; onChange: (html: string) => void; placeholder?: string; label: string }) => (
+  <Suspense fallback={<div className="rte rte-loading muted small">Loading editor…</div>}>
+    <LazyEditor {...props} />
+  </Suspense>
+);
 
 export const ESTIMATE_STATUS: Record<EstimateStatus | "expired", { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -44,12 +51,20 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
 
   const blank = (projectId = ""): Estimate => {
     const job = data.projects.find((p) => p.id === projectId);
+    const client = data.clients.find((c) => c.id === job?.clientId);
     const issue = today();
     return {
       id: uid(),
       type: typeTab === "all" ? "project" : (typeTab as EstimateType),
-      number: `${s.estimatePrefix}${String(s.nextEstimateNumber).padStart(4, "0")}`,
-      clientId: job?.clientId ?? data.clients[0]?.id ?? "",
+      number: "", // assigned on first save
+      title: job?.name ?? "",
+      header: "",
+      remarks: "",
+      clientAddress: client?.address ?? "",
+      country: COUNTRIES.find((c) => c.currency === s.currency)?.code ?? "IN",
+      roundOff: true,
+      discountPct: 0,
+      clientId: job?.clientId ?? "",
       projectId: job?.id ?? "",
       issueDate: issue,
       validUntil: addDays(issue, s.estimateValidDays),
@@ -98,7 +113,10 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   );
 
   const save = (e: Estimate) => {
-    if (isNew(e)) updateSettings({ nextEstimateNumber: s.nextEstimateNumber + 1 });
+    if (isNew(e) && !e.number) {
+      e = { ...e, number: `${s.estimatePrefix}${String(s.nextEstimateNumber).padStart(4, "0")}` };
+      updateSettings({ nextEstimateNumber: s.nextEstimateNumber + 1 });
+    }
     upsert("estimates", e);
     setEdit(null);
   };
@@ -109,7 +127,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     const job = data.projects.find((p) => p.id === e.projectId);
     if (status === "approved" && job && (job.status === "lead" || !job.budget)) {
       const t = invoiceTotals(e);
-      upsert("projects", { ...job, status: job.status === "lead" ? "active" : job.status, budget: job.budget || t.total - t.tax });
+      upsert("projects", { ...job, status: job.status === "lead" ? "active" : job.status, budget: job.budget || t.net });
     }
   };
 
@@ -128,6 +146,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       taxRate: e.taxRate,
       discount: e.discount,
       notes: e.notes,
+      country: e.country,
+      roundOff: e.roundOff,
       paidDate: "",
       createdAt: new Date().toISOString(),
     };
@@ -149,6 +169,8 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       {e.status === "approved" && <button className="btn ghost good" onClick={() => createInvoice(e)}>Create invoice</button>}
     </>
   );
+
+  if (edit) return <EstimateForm initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={save} />;
 
   return (
     <div className="page">
@@ -205,7 +227,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
                     <td className="nowrap">{fmtDate(e.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "expired" ? "warn" : ""}`}>{fmtDate(e.validUntil, s.locale)}</td>
                     <td><Badge tone={ESTIMATE_STATUS[st].tone}>{ESTIMATE_STATUS[st].label}</Badge></td>
-                    <td className="num">{money(invoiceTotals(e).total, s)}</td>
+                    <td className="num">{money(invoiceTotals(e).total, docFormat(e.country, s))}</td>
                     <td className="actions" onClick={(ev) => ev.stopPropagation()}>{actions(e)}</td>
                   </tr>
                 );
@@ -215,7 +237,6 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
-      {edit && <EstimateEditor initial={edit} isNew={isNew(edit)} onCancel={() => setEdit(null)} onSave={save} />}
 
       {view && (
         <Modal title={`${typeInfo(estimateType(view))?.label} estimate ${view.number}`} onClose={() => setView(null)} wide>
@@ -228,7 +249,11 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
             badge={<Badge tone={ESTIMATE_STATUS[displayStatus(view)].tone}>{ESTIMATE_STATUS[displayStatus(view)].label}</Badge>}
             doc={view}
             notes={view.notes}
-            totalLabel="Estimated total"
+            totalLabel="Grand total"
+            heading={view.title}
+            header={view.header}
+            remarks={view.remarks}
+            billTo={{ address: view.clientAddress || undefined }}
           />
           <div className="form-actions no-print">
             <button
@@ -258,55 +283,144 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
   );
 }
 
-function EstimateEditor({ initial, isNew, onSave, onCancel }: { initial: Estimate; isNew: boolean; onSave: (e: Estimate) => void; onCancel: () => void }) {
+function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate; isNew: boolean; onSave: (e: Estimate) => void; onCancel: () => void }) {
   const { data } = useStore();
   const s = data.settings;
   const [est, setEst] = useState(initial);
+  const client = data.clients.find((c) => c.id === est.clientId);
   const jobs = data.projects.filter((p) => p.clientId === est.clientId);
+  const fmt = docFormat(est.country, s);
+  const subtotal = invoiceTotals({ ...est, discount: 0 }).subtotal;
+  const type = typeInfo(estimateType(est))!;
+
+  /** Keep a percentage discount in step with the lines. */
+  const withDiscount = (e: Estimate): Estimate => {
+    if (!e.discountPct) return e;
+    const sub = invoiceTotals({ ...e, discount: 0 }).subtotal;
+    return { ...e, discount: Math.round(sub * e.discountPct) / 100 };
+  };
+  const set = (patch: Partial<Estimate>) => setEst((e) => withDiscount({ ...e, ...patch }));
+
+  const pickClient = (id: string) => {
+    const c = data.clients.find((x) => x.id === id);
+    set({ clientId: id, projectId: "", clientAddress: c?.address ?? "" });
+  };
+  const pickJob = (id: string) => {
+    const job = data.projects.find((p) => p.id === id);
+    set({ projectId: id, title: est.title || job?.name || "" });
+  };
+  const pickCountry = (code: CountryCode) =>
+    set({ country: code, taxRate: code === "IN" ? (est.country === "IN" ? est.taxRate : s.defaultTaxRate) : 0 });
 
   return (
-    <Modal title={isNew ? `New ${typeInfo(estimateType(est))?.label.toLowerCase()} estimate` : `Edit ${est.number}`} onClose={onCancel} wide>
-      <form className="form" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
-        <Field label="Estimate number"><input required value={est.number} onChange={(e) => setEst({ ...est, number: e.target.value })} /></Field>
-        <Field label="Type">
-          <select value={estimateType(est)} onChange={(e) => setEst({ ...est, type: e.target.value as EstimateType })}>
-            {ESTIMATE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Status">
-          <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; setEst({ ...est, status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent – awaiting approval</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </Field>
-        <Field label="Client">
-          <select required value={est.clientId} onChange={(e) => setEst({ ...est, clientId: e.target.value, projectId: "" })}>
-            {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Job">
-          <select value={est.projectId} onChange={(e) => setEst({ ...est, projectId: e.target.value })}>
-            <option value="">—</option>
-            {jobs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Issue date"><input required type="date" value={est.issueDate} onChange={(e) => setEst({ ...est, issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></Field>
-        <Field label="Valid until"><input required type="date" value={est.validUntil} onChange={(e) => setEst({ ...est, validUntil: e.target.value })} /></Field>
+    <div className="page">
+      <div className="page-head">
+        <h1 className="back-title">
+          <button type="button" className="icon-btn back-btn" onClick={onCancel} aria-label="Back to estimates">‹</button>
+          {isNew ? `Add ${type.label} Estimate` : `Edit ${type.label} Estimate ${est.number}`}
+        </h1>
+      </div>
+      <form className="card form estimate-form" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
+        <div className="span2 row between top estimate-top">
+          <div className="estimate-brand">
+            {s.logo ? <img src={s.logo} alt="" /> : null}
+            <span>{s.agencyName}</span>
+          </div>
+          <Field label="Date *"><input required type="date" value={est.issueDate} onChange={(e) => set({ issueDate: e.target.value, validUntil: isNew ? addDays(e.target.value, s.estimateValidDays) : est.validUntil })} /></Field>
+        </div>
 
-        <ItemsEditor items={est.items} onChange={(items) => setEst({ ...est, items })} settings={s} />
+        <div className="span2 grid-3">
+          <Field label="Client details *">
+            <select required value={est.clientId} onChange={(e) => pickClient(e.target.value)}>
+              <option value="" disabled>Select…</option>
+              {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="GSTIN"><input readOnly value={client?.taxId ?? ""} placeholder="From client" /></Field>
+          <Field label="Estimate No. *"><input readOnly value={est.number} placeholder="Save to get No." /></Field>
 
-        <Field label={`Discount (${s.currency})`}><input type="number" min={0} step="0.01" value={est.discount || ""} onChange={(e) => setEst({ ...est, discount: Number(e.target.value) })} /></Field>
-        <Field label="Tax rate (%)"><input type="number" min={0} step="0.01" value={est.taxRate} onChange={(e) => setEst({ ...est, taxRate: Number(e.target.value) })} /></Field>
-        <Field label="Notes / terms" span={2}><textarea rows={2} value={est.notes} onChange={(e) => setEst({ ...est, notes: e.target.value })} /></Field>
+          <Field label="Address"><textarea rows={3} value={est.clientAddress ?? ""} onChange={(e) => set({ clientAddress: e.target.value })} placeholder="Billing address" /></Field>
+          <div className="stack">
+            <Field label="PAN"><input readOnly value={client?.pan ?? ""} placeholder="From client" /></Field>
+            <Field label="Country *">
+              <select required value={est.country ?? ""} onChange={(e) => pickCountry(e.target.value as CountryCode)}>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label} ({c.currency})</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="stack">
+            <Field label="Job No.">
+              <select value={est.projectId} onChange={(e) => pickJob(e.target.value)} disabled={!est.clientId}>
+                <option value="">{est.clientId ? "Select…" : "Choose a client first"}</option>
+                {jobs.map((p) => <option key={p.id} value={p.id}>{p.number ? `${p.number} · ` : ""}{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Type">
+              <select value={estimateType(est)} onChange={(e) => set({ type: e.target.value as EstimateType })}>
+                {ESTIMATE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </Field>
+          </div>
+        </div>
 
-        <Totals doc={est} settings={s} className="span2" totalLabel="Estimated total" />
-        <div className="form-actions span2">
-          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+        <Field label="Title *" span={2}><input required value={est.title ?? ""} onChange={(e) => set({ title: e.target.value })} placeholder="Enter the job title" /></Field>
+        <div className="field span2">
+          <span>Header</span>
+          <RichTextEditor label="Header" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Enter the job header" />
+        </div>
+
+        <ItemsEditor items={est.items} onChange={(items) => set({ items })} settings={fmt} />
+
+        <div className="field">
+          <span>Remarks</span>
+          <RichTextEditor label="Remarks" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Any important message to add" />
+          <div className="grid-2-tight">
+            <Field label="Valid until"><input required type="date" value={est.validUntil} onChange={(e) => set({ validUntil: e.target.value })} /></Field>
+            <Field label="Status">
+              <select value={est.status} onChange={(e) => { const status = e.target.value as EstimateStatus; set({ status, decidedDate: status === "approved" || status === "rejected" ? est.decidedDate || today() : "" }); }}>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent – awaiting approval</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+
+        <div className="estimate-totals">
+          <Field label="Total"><input readOnly className="num" value={money(subtotal, fmt)} /></Field>
+          <div className="field">
+            <span>Discount</span>
+            <div className="grid-2-tight">
+              <Field label="Percentage">
+                <input type="number" min={0} max={100} step="0.01" value={est.discountPct || ""} placeholder="0"
+                  onChange={(e) => set({ discountPct: Number(e.target.value) || 0, ...(Number(e.target.value) ? {} : { discount: 0 }) })} />
+              </Field>
+              <Field label={`Value (${fmt.currency})`}>
+                <input type="number" min={0} step="0.01" value={est.discount || ""} placeholder="0.00"
+                  onChange={(e) => setEst({ ...est, discount: Number(e.target.value) || 0, discountPct: 0 })} />
+              </Field>
+            </div>
+          </div>
+          <Field label="Estimated revenue"><input readOnly className="num" value={money(invoiceTotals(est).net, fmt)} /></Field>
+          <div className="grid-2-tight">
+            <Field label="Tax rate (%)"><input type="number" min={0} step="0.01" value={est.taxRate} onChange={(e) => set({ taxRate: Number(e.target.value) })} /></Field>
+            <Field label="Tax"><input readOnly className="num" value={money(invoiceTotals(est).tax, fmt)} /></Field>
+          </div>
+          <Field label="Round off">
+            <div className="row gap">
+              <input readOnly className="num" value={money(invoiceTotals(est).roundOff, fmt)} />
+              <label className="check small"><input type="checkbox" checked={!!est.roundOff} onChange={(e) => set({ roundOff: e.target.checked })} /> Round</label>
+            </div>
+          </Field>
+          <Field label="Grand total"><input readOnly className="num grand-input" value={money(invoiceTotals(est).total, fmt)} /></Field>
+        </div>
+
+        <div className="form-actions span2 start">
           <button className="btn primary">Save estimate</button>
+          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
         </div>
       </form>
-    </Modal>
+    </div>
   );
 }

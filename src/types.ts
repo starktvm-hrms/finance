@@ -14,6 +14,28 @@ export interface Settings {
   nextEstimateNumber: number;
   estimateValidDays: number;
   paymentTermsDays: number;
+  jobPrefix: string;
+  nextJobNumber: number;
+  departmentHeads: string[]; // people who can approve new jobs
+  logo: string; // small data-URL image shown on estimates and invoices ("" = none)
+}
+
+/** Countries an estimate can be billed in; sets the currency and number format. */
+export const COUNTRIES = [
+  { code: "IN", label: "India", currency: "INR", locale: "en-IN" },
+  { code: "AE", label: "United Arab Emirates", currency: "AED", locale: "en-AE" },
+  { code: "US", label: "United States", currency: "USD", locale: "en-US" },
+  { code: "GB", label: "United Kingdom", currency: "GBP", locale: "en-GB" },
+  { code: "SG", label: "Singapore", currency: "SGD", locale: "en-SG" },
+  { code: "AU", label: "Australia", currency: "AUD", locale: "en-AU" },
+  { code: "CA", label: "Canada", currency: "CAD", locale: "en-CA" },
+  { code: "EU", label: "Eurozone", currency: "EUR", locale: "de-DE" },
+] as const;
+export type CountryCode = (typeof COUNTRIES)[number]["code"];
+
+export interface ClientProduct {
+  name: string;
+  subProducts: string[];
 }
 
 export interface Client {
@@ -24,6 +46,8 @@ export interface Client {
   phone: string;
   address: string;
   taxId: string;
+  pan?: string;
+  products?: ClientProduct[]; // brands/products the agency works on for this client
   notes: string;
   createdAt: string;
 }
@@ -58,9 +82,21 @@ export interface Vendor {
 
 export type ProjectStatus = "lead" | "active" | "on_hold" | "completed" | "cancelled";
 
+export interface JobApproval {
+  head: string; // department head asked to approve
+  status: "pending" | "approved" | "rejected";
+  decidedDate: string;
+}
+
+/** A job (shown as "Jobs"; named Project in code). `name` is the job title. */
 export interface Project {
   id: ID;
+  number?: string; // JOB-0001; missing on jobs made before numbering
   clientId: ID;
+  contactPerson?: string;
+  product?: string;
+  subProduct?: string;
+  approval?: JobApproval;
   name: string;
   status: ProjectStatus;
   budget: number;
@@ -92,6 +128,8 @@ export interface Invoice {
   discount: number; // flat amount
   notes: string;
   paidDate: string;
+  country?: CountryCode;
+  roundOff?: boolean;
   createdAt: string;
 }
 
@@ -125,6 +163,13 @@ export interface Estimate {
   notes: string;
   decidedDate: string; // approved / rejected on
   invoiceId: ID | ""; // set once converted
+  title?: string;
+  header?: string; // sanitised rich-text HTML shown above the line items
+  remarks?: string; // sanitised rich-text HTML shown below the totals
+  clientAddress?: string; // billing address as printed on this estimate
+  country?: CountryCode; // billing country → currency (default: agency currency)
+  discountPct?: number; // when set, discount = subtotal × pct
+  roundOff?: boolean; // round the grand total to a whole unit
   createdAt: string;
 }
 
