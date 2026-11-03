@@ -134,6 +134,8 @@ export interface LineItem {
   description: string;
   quantity: number;
   rate: number;
+  platform?: string; // media estimates: publication / channel / platform the line is booked with
+  unit?: string; // media estimates: unit shown next to the quantity (e.g. 1, 10 sec, 25x4 cm)
 }
 
 export interface Invoice {

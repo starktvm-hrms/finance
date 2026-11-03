@@ -21,7 +21,10 @@ default, and can sync to your website's backend when you're ready.
   job type, product, client with GSTIN/PAN, Sl. No./Description/Amount table (first line bold,
   `•` lines as bullets), SGST + CGST (same state) or IGST, round off, grand total, amount in
   words (lakh/crore), signature row, E & OE, terms and bank details (all set in **Settings**).
-  Media estimates will get their own landscape layout.
+- **Media estimate print** — A4 landscape in the agency's media format: letterhead repeated on
+  every page, MEDIA ESTIMATE with Est No. (`ME/25-26/372`), dates, job no./type, product and the
+  client block, then Sl. No. / Platform / Quantity / Unit / Amount with each line's description
+  underneath, a Note, totals, signatures, terms and bank details; pages are numbered "1 / 2".
 - **Invoices** — line items, discount, tax (GST/VAT), auto-numbering, payment terms,
   draft → sent → paid workflow, automatic *overdue* detection, print / save as PDF, CSV export.
 - **Expenses** — categories, link to a project or mark as overhead, recurring flag,

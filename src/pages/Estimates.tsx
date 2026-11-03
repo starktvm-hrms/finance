@@ -3,6 +3,7 @@ import { COUNTRIES, ESTIMATE_TYPES, type CountryCode, type Estimate, type Estima
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
 import { addDays, amountInWords, docFormat, financialYear, fmtDate, gstSplit, gstState, invoiceTotals, money, today, uid } from "../lib/util";
+import MediaEstimate from "../components/MediaEstimate";
 import ProductionEstimate, { EstimateFooter, Letterhead, SignatureBlock, dmyDate, plainAmount } from "../components/ProductionEstimate";
 import { AutoTextarea, Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
@@ -269,8 +270,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
 
       {view && (
         <Modal title={`${typeInfo(estimateType(view))?.label} estimate ${view.number}`} onClose={() => setView(null)} wide>
-          {/* Media estimates get their own landscape layout later; until then all use this one. */}
-          <ProductionEstimate est={view} />
+          {estimateType(view) === "media" ? <MediaEstimate est={view} /> : <ProductionEstimate est={view} />}
           <div className="form-actions no-print">
             <button
               className="btn ghost danger"
@@ -311,6 +311,10 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
   const type = typeInfo(estimateType(est))!;
   const split = gstSplit(gstState(s.taxId, s.stateCode), client?.taxId, est.taxRate);
   const jobTypes = [...new Set(data.estimates.map((e) => e.jobType).filter((x): x is string => !!x))].sort();
+  const isMedia = estimateType(est) === "media";
+  // Media lines are booked with a publication / channel / platform from the vendor lists.
+  const platforms = data.vendors.filter((v) => v.active && v.category !== "suppliers").map((v) => v.name).sort();
+  const removeLine = (id: string) => set({ items: est.items.filter((x) => x.id !== id) });
   const previewNo = `${estimateType(est) === "media" ? s.mediaEstimatePrefix : s.productionEstimatePrefix}/${financialYear(est.issueDate || today())}/${s.nextEstimateNumber}`;
 
   /** Keep a percentage discount in step with the lines. */
@@ -356,10 +360,10 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
 
       <form className="estimate-editor" onSubmit={(e) => { e.preventDefault(); onSave(est); }}>
         {/* The sheet: everything here prints, laid out like the printed estimate. */}
-        <div className="pe-doc pe-edit">
+        <div className={`pe-doc pe-edit ${isMedia ? "me-doc me-edit" : ""}`}>
           <div className="pe-fixed" title="From Settings → Agency / Letterhead"><Letterhead /></div>
 
-          <h1 className="pe-title">ESTIMATE</h1>
+          <h1 className="pe-title">{isMedia ? "MEDIA ESTIMATE" : "ESTIMATE"}</h1>
 
           <div className="pe-meta">
             <dl className="pe-meta-left">
@@ -402,6 +406,46 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
             <RichTextEditor label="Header (optional, prints above the table)" value={est.header ?? ""} onChange={(header) => set({ header })} placeholder="Header (optional) — prints above the table" />
           </div>
 
+          {isMedia ? (
+            <table className="me-table me-table-edit">
+              <thead>
+                <tr>
+                  <th className="me-sl">Sl. No.</th><th>Platform</th><th className="me-q">Quantity</th><th className="me-u">Unit</th>
+                  <th className="pe-amt">Amount({fmt.currency})</th><th className="pe-x" />
+                </tr>
+              </thead>
+              {est.items.map((it, i) => (
+                <tbody key={it.id} className="me-item">
+                  <tr>
+                    <td className="me-sl">{i + 1}</td>
+                    <td><input list="media-platforms" aria-label={`Line ${i + 1} platform`} value={it.platform ?? ""} onChange={(e) => setItem(it.id, { platform: e.target.value })} placeholder="e.g. Facebook India Online Services Pvt. Ltd." /></td>
+                    <td className="me-q"><input type="number" min={0} step="0.01" aria-label={`Line ${i + 1} quantity`} value={it.quantity} onChange={(e) => setItem(it.id, { quantity: Number(e.target.value) })} /></td>
+                    <td className="me-u"><input aria-label={`Line ${i + 1} unit`} value={it.unit ?? ""} onChange={(e) => setItem(it.id, { unit: e.target.value })} placeholder="1" /></td>
+                    <td className="pe-amt">
+                      <input className="num" type="number" min={0} step="0.01" aria-label={`Line ${i + 1} amount`} value={it.rate || ""} placeholder="0.00" onChange={(e) => setItem(it.id, { rate: Number(e.target.value) })} />
+                      {Number(it.quantity) !== 1 && <div className="pe-qty">× {it.quantity} = {plainAmount(it.quantity * it.rate, fmt.locale)}</div>}
+                    </td>
+                    <td className="pe-x" rowSpan={2}>
+                      <button type="button" className="icon-btn" disabled={est.items.length === 1} onClick={() => removeLine(it.id)} aria-label={`Remove line ${i + 1}`}>×</button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td />
+                    <td colSpan={3}>
+                      <AutoTextarea
+                        required
+                        aria-label={`Line ${i + 1} description`}
+                        value={it.description}
+                        onChange={(e) => setItem(it.id, { description: e.target.value })}
+                        placeholder={"What the cost covers (prints bold)\n• detail lines start with •"}
+                      />
+                    </td>
+                    <td />
+                  </tr>
+                </tbody>
+              ))}
+            </table>
+          ) : (
           <table className="pe-table pe-table-edit">
             <thead>
               <tr><th className="pe-sl">Sl. No.</th><th>Description</th><th className="pe-amt">Amount({fmt.currency})</th><th className="pe-x" /></tr>
@@ -433,7 +477,15 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
               ))}
             </tbody>
           </table>
+          )}
+          <datalist id="media-platforms">{platforms.map((n) => <option key={n} value={n} />)}</datalist>
           <button type="button" className="btn ghost pe-add" onClick={() => set({ items: [...est.items, newLine()] })}>+ Add line</button>
+
+          {isMedia && (
+            <div className="pe-rich-edit me-note-edit">
+              <RichTextEditor key="note" label="Note (optional, prints under the lines)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Note (optional) — e.g. Please release 60% of the grand total as part payment" />
+            </div>
+          )}
 
           <div className="pe-totals">
             <div className="pe-words">Amount in Words: {amountInWords(t.total, fmt.currency)}</div>
@@ -464,9 +516,9 @@ function EstimateForm({ initial, isNew, onSave, onCancel }: { initial: Estimate;
             </dl>
           </div>
 
-          <div className="pe-rich-edit">
-            <RichTextEditor label="Remarks (optional, prints below the totals)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Remarks (optional) — any important message to add" />
-          </div>
+          {!isMedia && <div className="pe-rich-edit">
+            <RichTextEditor key="remarks" label="Remarks (optional, prints below the totals)" value={est.remarks ?? ""} onChange={(remarks) => set({ remarks })} placeholder="Remarks (optional) — any important message to add" />
+          </div>}
 
           <div className="pe-fixed" title="From Settings → Letterhead & bank details">
             <SignatureBlock />
