@@ -15,6 +15,9 @@ default, and can sync to your website's backend when you're ready.
   one-click "repeat", filters by month/category, CSV export.
 - **Projects** — budget, status, invoiced vs. budget, project costs and profit.
 - **Clients** — contact & tax details, revenue and outstanding per client.
+- **Clients & Vendors** — sidebar group with Clients and vendor lists: Publications,
+  Suppliers, Channels, Radio, Out Of Home, Websites, Digital, Theatres. Each vendor shows
+  spend this year and in total; expenses link to a vendor when the payee name matches.
 - **Settings** — agency details for invoices, currency (INR default), tax rate,
   invoice prefix, JSON backup/restore, sample data.
 - Responsive (works on phones) and supports light/dark mode.

@@ -18,7 +18,7 @@ export const defaultSettings: Settings = {
 };
 
 export function emptyData(): AppData {
-  return { version: 1, settings: { ...defaultSettings }, clients: [], projects: [], estimates: [], invoices: [], expenses: [] };
+  return { version: 1, settings: { ...defaultSettings }, clients: [], vendors: [], projects: [], estimates: [], invoices: [], expenses: [] };
 }
 
 /** Sample data so the dashboard isn't empty on first run. Clear it from Settings. */
@@ -113,15 +113,34 @@ export function sampleData(): AppData {
   ];
   data.settings.nextEstimateNumber = 5;
 
+  const v = (category: AppData["vendors"][number]["category"], name: string, contactName = "", address = "") => ({
+    id: uid(), category, name, contactName, email: "", phone: "", address, taxId: "", paymentTermsDays: 30, notes: "", active: true, createdAt: created,
+  });
+  data.vendors = [
+    v("publications", "The Daily Courier", "Ad sales desk", "Bengaluru"),
+    v("publications", "Metro Weekly", "", "Mumbai"),
+    v("suppliers", "Freelance developer", "Arjun"),
+    v("suppliers", "PrintPro Offset", "", "Kochi"),
+    v("channels", "Star Regional TV"),
+    v("radio", "City FM 91.1", "", "Bengaluru"),
+    v("out_of_home", "Skyline Hoardings", "", "MG Road, Bengaluru"),
+    v("websites", "TechNews Daily"),
+    v("digital", "Meta Ads"),
+    v("digital", "Google Ads"),
+    v("theatres", "Cineplex Screens", "", "Kochi"),
+  ];
+  const vid = (name: string) => data.vendors.find((x) => x.name === name)?.id;
+
   data.expenses = [];
   for (let m = 5; m >= 0; m--) {
     data.expenses.push(exp(m, "Team payroll", "Salaries", 95000, "", true));
     data.expenses.push(exp(m, "Cowork Space", "Rent & Utilities", 25000, "", true));
     data.expenses.push(exp(m, "Figma / Google Workspace / Adobe", "Software & Tools", 12000, "", true));
   }
-  data.expenses.push(exp(3, "Freelance developer", "Freelancers", 70000, p1));
-  data.expenses.push(exp(2, "Meta Ads", "Advertising", 45000, p3));
-  data.expenses.push(exp(1, "Meta Ads", "Advertising", 52000, p3));
+  data.expenses.push({ ...exp(3, "Freelance developer", "Freelancers", 70000, p1), vendorId: vid("Freelance developer") });
+  data.expenses.push({ ...exp(2, "Meta Ads", "Media", 45000, p3), vendorId: vid("Meta Ads") });
+  data.expenses.push({ ...exp(1, "Meta Ads", "Media", 52000, p3), vendorId: vid("Meta Ads") });
+  data.expenses.push({ ...exp(1, "City FM 91.1", "Media", 38000, p3), vendorId: vid("City FM 91.1") });
   data.expenses.push(exp(1, "MacBook Air", "Hardware", 110000));
   return data;
 }

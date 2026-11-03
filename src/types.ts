@@ -28,6 +28,34 @@ export interface Client {
   createdAt: string;
 }
 
+/** Vendor lists under "Clients & Vendors" (media owners and suppliers). */
+export const VENDOR_CATEGORIES = [
+  { id: "publications", label: "Publications", one: "publication", hint: "Newspapers and magazines" },
+  { id: "suppliers", label: "Suppliers", one: "supplier", hint: "Printers, production houses, freelancers and other suppliers" },
+  { id: "channels", label: "Channels", one: "channel", hint: "TV channels and networks" },
+  { id: "radio", label: "Radio", one: "radio station", hint: "Radio stations" },
+  { id: "out_of_home", label: "Out Of Home", one: "OOH vendor", hint: "Hoardings, transit and other outdoor media" },
+  { id: "websites", label: "Websites", one: "website", hint: "Websites and publishers selling ad space" },
+  { id: "digital", label: "Digital", one: "digital platform", hint: "Ad platforms and networks (Meta, Google, etc.)" },
+  { id: "theatres", label: "Theatres", one: "theatre", hint: "Cinema and theatre advertising" },
+] as const;
+export type VendorCategory = (typeof VENDOR_CATEGORIES)[number]["id"];
+
+export interface Vendor {
+  id: ID;
+  category: VendorCategory;
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  address: string; // city / location for OOH, theatres etc.
+  taxId: string;
+  paymentTermsDays: number;
+  notes: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export type ProjectStatus = "lead" | "active" | "on_hold" | "completed" | "cancelled";
 
 export interface Project {
@@ -92,6 +120,7 @@ export const EXPENSE_CATEGORIES = [
   "Freelancers",
   "Software & Tools",
   "Advertising",
+  "Media",
   "Rent & Utilities",
   "Hardware",
   "Travel",
@@ -105,6 +134,7 @@ export interface Expense {
   id: ID;
   date: string;
   vendor: string;
+  vendorId?: ID; // set when the payee is in a vendor list
   category: ExpenseCategory;
   amount: number;
   projectId: ID | "";
@@ -117,6 +147,7 @@ export interface AppData {
   version: 1;
   settings: Settings;
   clients: Client[];
+  vendors: Vendor[];
   projects: Project[];
   estimates: Estimate[];
   invoices: Invoice[];
