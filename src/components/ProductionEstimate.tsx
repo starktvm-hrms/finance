@@ -34,19 +34,58 @@ function Description({ text }: { text: string }) {
   );
 }
 
-/** Printable production estimate (A4 portrait), laid out like the agency's existing format. */
-export default function ProductionEstimate({ est }: { est: Estimate }) {
-  const { data } = useStore();
-  const s = data.settings;
-  const client = data.clients.find((c) => c.id === est.clientId);
-  const job = data.projects.find((p) => p.id === est.projectId);
-  const fmt = docFormat(est.country, s);
-  const t = invoiceTotals(est);
+export const dmyDate = dmy;
+export const plainAmount = amt;
+
+/** Letterhead, signature row and footer come from Settings; shared by the printout and the form. */
+export function Letterhead() {
+  const s = useStore().data.settings;
   const state = gstState(s.taxId, s.stateCode);
-  const split = gstSplit(state, client?.taxId, est.taxRate);
-  const half = est.taxRate / 2;
-  const product = est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" ") || est.title || "";
+  const contact = [
+    s.agencyPhone && `P: ${s.agencyPhone}`,
+    s.agencyFax && `F: ${s.agencyFax}`,
+    s.agencyEmail && `E: ${s.agencyEmail}`,
+  ].filter(Boolean);
+  const ids = [
+    s.agencyPan && `PAN: ${s.agencyPan}`,
+    s.taxId && `GSTIN: ${s.taxId}`,
+    state !== "00" && `State Code: ${state}`,
+    s.agencyCin && `CIN: ${s.agencyCin}`,
+    s.agencyWebsite,
+  ].filter(Boolean);
+  return (
+    <header className="pe-letterhead">
+      <div className="pe-brand">
+        {s.logo && <img src={s.logo} alt="" />}
+        <span>{s.agencyName}</span>
+      </div>
+      <p className="pe-address">
+        {[s.agencyAddress.replace(/\n/g, ", "), ...contact].filter(Boolean).join("   ")}
+        {ids.length > 0 && <><br />{ids.join("  ")}</>}
+      </p>
+    </header>
+  );
+}
+
+export function SignatureBlock() {
+  const s = useStore().data.settings;
   const signatures = s.signatureLabels.split(",").map((x) => x.trim()).filter(Boolean);
+  return (
+    <div className="pe-sign">
+      <div className="pe-sign-row">
+        {signatures.map((l) => <span key={l}>{l}</span>)}
+        <span className="pe-approved">
+          Approved
+          <span className="pe-approved-lines"><span>Signature:</span><span>Name:</span><span>Date:</span></span>
+        </span>
+      </div>
+      <div className="pe-eoe">E &amp; OE</div>
+    </div>
+  );
+}
+
+export function EstimateFooter() {
+  const s = useStore().data.settings;
   const terms = s.estimateTerms
     .split("\n")
     .map((x) => x.trim())
@@ -62,31 +101,33 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
       ["Swift code", s.bankSwift],
     ] as [string, string][]
   ).filter(([, v]) => v);
-  const contact = [
-    s.agencyPhone && `P: ${s.agencyPhone}`,
-    s.agencyFax && `F: ${s.agencyFax}`,
-    s.agencyEmail && `E: ${s.agencyEmail}`,
-  ].filter(Boolean);
-  const ids = [
-    s.agencyPan && `PAN: ${s.agencyPan}`,
-    s.taxId && `GSTIN: ${s.taxId}`,
-    state !== "00" && `State Code: ${state}`,
-    s.agencyCin && `CIN: ${s.agencyCin}`,
-    s.agencyWebsite,
-  ].filter(Boolean);
+  return (
+    <footer className="pe-footer">
+      <ol>{terms.map((x) => <li key={x}>{x}</li>)}</ol>
+      {bank.length > 0 && (
+        <div className="pe-bank">
+          {bank.map(([k, v]) => <div key={k}>{k}: {v}</div>)}
+        </div>
+      )}
+    </footer>
+  );
+}
 
+/** Printable production estimate (A4 portrait), laid out like the agency's existing format. */
+export default function ProductionEstimate({ est }: { est: Estimate }) {
+  const { data } = useStore();
+  const s = data.settings;
+  const client = data.clients.find((c) => c.id === est.clientId);
+  const job = data.projects.find((p) => p.id === est.projectId);
+  const fmt = docFormat(est.country, s);
+  const t = invoiceTotals(est);
+  const state = gstState(s.taxId, s.stateCode);
+  const split = gstSplit(state, client?.taxId, est.taxRate);
+  const half = est.taxRate / 2;
+  const product = est.productLabel || [job?.product, job?.subProduct].filter(Boolean).join(" ") || est.title || "";
   return (
     <article className="pe-doc print-area" aria-label={`Estimate ${est.number}`}>
-      <header className="pe-letterhead">
-        <div className="pe-brand">
-          {s.logo && <img src={s.logo} alt="" />}
-          <span>{s.agencyName}</span>
-        </div>
-        <p className="pe-address">
-          {[s.agencyAddress.replace(/\n/g, ", "), ...contact].filter(Boolean).join("   ")}
-          {ids.length > 0 && <><br />{ids.join("  ")}</>}
-        </p>
-      </header>
+      <Letterhead />
 
       <h1 className="pe-title">ESTIMATE</h1>
 
@@ -156,25 +197,9 @@ export default function ProductionEstimate({ est }: { est: Estimate }) {
 
       {est.remarks && <RichTextView html={est.remarks} className="pe-rich" />}
 
-      <div className="pe-sign">
-        <div className="pe-sign-row">
-          {signatures.map((l) => <span key={l}>{l}</span>)}
-          <span className="pe-approved">
-            Approved
-            <span className="pe-approved-lines"><span>Signature:</span><span>Name:</span><span>Date:</span></span>
-          </span>
-        </div>
-        <div className="pe-eoe">E &amp; OE</div>
-      </div>
+      <SignatureBlock />
 
-      <footer className="pe-footer">
-        <ol>{terms.map((x) => <li key={x}>{x}</li>)}</ol>
-        {bank.length > 0 && (
-          <div className="pe-bank">
-            {bank.map(([k, v]) => <div key={k}>{k}: {v}</div>)}
-          </div>
-        )}
-      </footer>
+      <EstimateFooter />
     </article>
   );
 }
