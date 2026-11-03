@@ -216,6 +216,9 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .estimate-totals .grid-2-tight { margin-top: 0; }
 .grand-input { font-weight: 650; font-size: 16px; }
 .form-actions.start { justify-content: flex-start; }
+.jobs-table td:nth-child(2) { min-width: 240px; }
+.jobs-table td .badge, .jobs-table td .btn.ghost { white-space: nowrap; }
+.jobs-table .approval { min-width: 150px; }
 .approval { display: flex; align-items: center; gap: 2px; margin-top: 4px; flex-wrap: wrap; }
 .approval .btn.ghost { padding: 2px 6px; }
 .more summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 10px; }

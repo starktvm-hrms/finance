@@ -1,8 +1,9 @@
-import { useState } from "react";
-import type { Project, ProjectStatus } from "../types";
+import { useEffect, useRef, useState } from "react";
+import { ESTIMATE_TYPES, type EstimateType, type Project, type ProjectStatus } from "../types";
 import { useStore } from "../lib/store";
 import { needsEstimate, projectFinancials } from "../lib/metrics";
 import { makeJobNumber } from "../lib/jobno";
+import { jobCategory } from "../lib/doctype";
 import { go } from "../lib/route";
 import { ESTIMATE_STATUS } from "./Estimates";
 import { fmtDate, money, today, uid } from "../lib/util";
@@ -26,11 +27,24 @@ export default function Projects({ params }: { params: URLSearchParams }) {
     const f = params.get("status") as JobFilter | null;
     return f && (f === "needs_estimate" || f in PROJECT_STATUS) ? f : "all";
   });
+  // Tabs = category, like Estimates and Invoices (#/projects?type=media&status=active)
+  const TYPE_TABS = [{ id: "all", label: "All", hint: "Every job from lead to completion: estimate, budget, billing and profit." }, ...ESTIMATE_TYPES];
+  const typeTab = TYPE_TABS.some((t) => t.id === params.get("type")) ? (params.get("type") as string) : "all";
+  const tab = TYPE_TABS.find((t) => t.id === typeTab)!;
+  const catOf = (p: Project) => jobCategory(p, data.estimates);
+  const switchTab = (type: string) => go("projects", { ...(type !== "all" && { type }), ...(status !== "all" && { status }) });
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = tabsRef.current;
+    const el = row?.querySelector<HTMLElement>(".tab.active");
+    if (row && el) row.scrollLeft = el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2;
+  }, [typeTab]);
   const latestEstimate = (jobId: string) =>
     data.estimates.filter((e) => e.projectId === jobId).sort((a, b) => b.issueDate.localeCompare(a.issueDate))[0];
 
   const blank = (): Project => ({
     id: uid(), clientId: "", contactPerson: "", product: "", subProduct: "", name: "", status: "lead",
+    category: typeTab === "all" ? undefined : (typeTab as EstimateType),
     budget: 0, startDate: today(), endDate: "", notes: "", createdAt: new Date().toISOString(),
   });
 
@@ -68,7 +82,10 @@ export default function Projects({ params }: { params: URLSearchParams }) {
   const decideApproval = (p: Project, status: "approved" | "rejected") =>
     p.approval && upsert("projects", { ...p, approval: { ...p.approval, status, decidedDate: today() } });
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
-  const rows = data.projects.filter((p) => status === "all" || p.status === status || (status === "needs_estimate" && needsEstimate(data, p.id)));
+  const statusMatch = (p: Project, f: JobFilter) => f === "all" || p.status === f || (f === "needs_estimate" && needsEstimate(data, p.id));
+  const inTab = (p: Project) => typeTab === "all" || catOf(p) === typeTab;
+  const rows = data.projects.filter((p) => inTab(p) && statusMatch(p, status));
+  const statusCount = (f: JobFilter) => data.projects.filter((p) => inTab(p) && statusMatch(p, f)).length;
 
   const del = (p: Project) => {
     if (data.invoices.some((i) => i.projectId === p.id) || data.expenses.some((e) => e.projectId === p.id) || data.estimates.some((e) => e.projectId === p.id)) {
@@ -82,27 +99,44 @@ export default function Projects({ params }: { params: URLSearchParams }) {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>Jobs</h1>
+          <p className="muted">Every job from lead to completion: estimate, budget, billing and profit.</p>
+        </div>
+      </div>
+      <div ref={tabsRef} className="tabs directory-tabs" role="tablist" aria-label="Job categories">
+        {TYPE_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={typeTab === t.id} className={`tab ${typeTab === t.id ? "active" : ""}`} onClick={() => switchTab(t.id)}>
+            {t.label}
+            <span className="tab-count">{t.id === "all" ? data.projects.length : data.projects.filter((p) => catOf(p) === t.id).length}</span>
+          </button>
+        ))}
+      </div>
       <PageHeader
-        title="Jobs"
-        subtitle="Every job from lead to completion: estimate, budget, billing and profit."
+        level={2}
+        title={typeTab === "all" ? "All jobs" : `${tab.label} jobs`}
+        subtitle={`${typeTab === "all" ? "Every category" : tab.hint} · ${rows.length} shown`}
         actions={
           <>
             <select value={status} onChange={(e) => setStatus(e.target.value as JobFilter)} aria-label="Status filter">
-              <option value="all">All statuses</option>
-              <option value="needs_estimate">Needs estimate</option>
-              {Object.entries(PROJECT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              <option value="all">All statuses ({statusCount("all")})</option>
+              <option value="needs_estimate">Needs estimate ({statusCount("needs_estimate")})</option>
+              {(Object.entries(PROJECT_STATUS) as [ProjectStatus, { label: string }][]).map(([k, v]) => <option key={k} value={k}>{v.label} ({statusCount(k)})</option>)}
             </select>
-            <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>+ New job</button>
+            <button className="btn primary" disabled={!data.clients.length} title={!data.clients.length ? "Add a client first" : ""} onClick={() => setEdit(blank())}>
+              + New {typeTab === "all" ? "" : `${tab.label.toLowerCase()} `}job
+            </button>
           </>
         }
       />
       <div className="card flush">
         {rows.length === 0 ? (
-          <Empty>{!data.clients.length ? "Add a client first, then create jobs for them." : status === "needs_estimate" ? "Every lead has an estimate. 🎉" : "No jobs here."}</Empty>
+          <Empty>{!data.clients.length ? "Add a client first, then create jobs for them." : status === "needs_estimate" ? "Every lead has an estimate. 🎉" : typeTab === "all" ? "No jobs here." : `No ${tab.label.toLowerCase()} jobs${status === "all" ? "" : " with this status"}.`}</Empty>
         ) : (
-          <table className="table">
+          <table className="table jobs-table">
             <thead>
-              <tr><th>Job No.</th><th>Job</th><th>Type</th><th>Status</th><th>Estimate</th><th className="num">Budget</th><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th><th /></tr>
+              <tr><th>Job No.</th><th>Job</th>{typeTab === "all" && <th>Category</th>}<th>Type</th><th>Status</th><th>Estimate</th><th className="num">Budget</th><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -117,6 +151,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                         {[clientName(p.clientId), [p.product, p.subProduct].filter(Boolean).join(" › "), fmtDate(p.startDate, s.locale)].filter(Boolean).join(" · ")}
                       </div>
                     </td>
+                    {typeTab === "all" && <td className="muted">{ESTIMATE_TYPES.find((t) => t.id === catOf(p))?.label}</td>}
                     <td>{p.jobType ?? <span className="muted">—</span>}</td>
                     <td onClick={(e) => p.approval?.status === "pending" && e.stopPropagation()}>
                       <Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge>
@@ -231,6 +266,12 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
               <button type="button" className="btn ghost" onClick={() => { setNumberTyped(false); setJob({ ...job, number: "" }); }} title="Use the generated number">Auto</button>
             )}
           </span>
+        </Field>
+        <Field label="Category" span={2}>
+          <select value={job.category ?? ""} onChange={(e) => setJob({ ...job, category: (e.target.value || undefined) as EstimateType | undefined })}>
+            <option value="">{isNew ? "Project" : `From its estimates (${ESTIMATE_TYPES.find((t) => t.id === jobCategory(initial, data.estimates))?.label})`}</option>
+            {ESTIMATE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
         </Field>
         <Field label="Type" span={2}>
           <input list="job-type-list" value={job.jobType ?? ""} onChange={(e) => setJob({ ...job, jobType: e.target.value })} placeholder="e.g. Brochure Printing" />
