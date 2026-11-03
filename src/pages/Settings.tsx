@@ -44,7 +44,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
-        <h3>Invoicing</h3>
+        <h3>Invoices & estimates</h3>
         <div className="form">
           <Field label="Currency">
             <select
@@ -58,6 +58,10 @@ export default function SettingsPage() {
           <Field label="Invoice prefix"><input value={s.invoicePrefix} onChange={(e) => updateSettings({ invoicePrefix: e.target.value })} /></Field>
           <Field label="Next invoice number"><input type="number" min={1} value={s.nextInvoiceNumber} onChange={(e) => updateSettings({ nextInvoiceNumber: Number(e.target.value) })} /></Field>
           <Field label="Payment terms (days)"><input type="number" min={0} value={s.paymentTermsDays} onChange={(e) => updateSettings({ paymentTermsDays: Number(e.target.value) })} /></Field>
+          <div />
+          <Field label="Estimate prefix"><input value={s.estimatePrefix} onChange={(e) => updateSettings({ estimatePrefix: e.target.value })} /></Field>
+          <Field label="Next estimate number"><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
+          <Field label="Estimates valid for (days)"><input type="number" min={1} value={s.estimateValidDays} onChange={(e) => updateSettings({ estimateValidDays: Number(e.target.value) })} /></Field>
         </div>
       </div>
 
@@ -86,7 +90,7 @@ export default function SettingsPage() {
             </button>
           )}
           <button className="btn" onClick={() => window.confirm("Replace current data with sample data?") && replaceAll(sampleData())}>Load sample data</button>
-          <button className="btn danger" onClick={() => window.confirm("Erase all clients, projects, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1 } })}>
+          <button className="btn danger" onClick={() => window.confirm("Erase all clients, jobs, estimates, invoices and expenses? Settings are kept.") && replaceAll({ ...emptyData(), settings: { ...s, nextInvoiceNumber: 1, nextEstimateNumber: 1 } })}>
             Clear all data
           </button>
         </div>

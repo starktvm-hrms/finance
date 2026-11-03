@@ -10,6 +10,9 @@ export interface Settings {
   defaultTaxRate: number; // percent
   invoicePrefix: string;
   nextInvoiceNumber: number;
+  estimatePrefix: string;
+  nextEstimateNumber: number;
+  estimateValidDays: number;
   paymentTermsDays: number;
 }
 
@@ -64,6 +67,26 @@ export interface Invoice {
   createdAt: string;
 }
 
+export type EstimateStatus = "draft" | "sent" | "approved" | "rejected" | "invoiced";
+
+/** A quote sent to the client for approval; once approved it becomes an invoice. */
+export interface Estimate {
+  id: ID;
+  number: string;
+  clientId: ID;
+  projectId: ID | "";
+  issueDate: string;
+  validUntil: string;
+  status: EstimateStatus;
+  items: LineItem[];
+  taxRate: number;
+  discount: number;
+  notes: string;
+  decidedDate: string; // approved / rejected on
+  invoiceId: ID | ""; // set once converted
+  createdAt: string;
+}
+
 export const EXPENSE_CATEGORIES = [
   "Salaries",
   "Freelancers",
@@ -95,6 +118,7 @@ export interface AppData {
   settings: Settings;
   clients: Client[];
   projects: Project[];
+  estimates: Estimate[];
   invoices: Invoice[];
   expenses: Expense[];
 }

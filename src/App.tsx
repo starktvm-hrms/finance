@@ -1,40 +1,30 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import Projects from "./pages/Projects";
 import Invoices from "./pages/Invoices";
+import Estimates from "./pages/Estimates";
+import { go, useRoute, type PageId } from "./lib/route";
 import Expenses from "./pages/Expenses";
 import SettingsPage from "./pages/Settings";
 
-const PAGES = [
+const PAGES: { id: PageId; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "◧" },
+  { id: "projects", label: "Jobs", icon: "◩" },
+  { id: "estimates", label: "Estimates", icon: "▥" },
   { id: "invoices", label: "Invoices", icon: "▤" },
   { id: "expenses", label: "Expenses", icon: "◫" },
-  { id: "projects", label: "Projects", icon: "◩" },
   { id: "clients", label: "Clients", icon: "◉" },
   { id: "settings", label: "Settings", icon: "⚙" },
-] as const;
-type PageId = (typeof PAGES)[number]["id"];
-
-const fromHash = (): PageId => {
-  const h = window.location.hash.replace("#/", "") as PageId;
-  return PAGES.some((p) => p.id === h) ? h : "dashboard";
-};
+];
 
 export default function App() {
   const { ready, error, data, storageName, sync } = useStore();
-  const [page, setPage] = useState<PageId>(fromHash);
+  const { page, params } = useRoute();
   const [navOpen, setNavOpen] = useState(false);
-
-  useEffect(() => {
-    const on = () => setPage(fromHash());
-    window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
-  }, []);
-
-  const go = (id: PageId) => {
-    window.location.hash = `#/${id}`;
+  const nav = (id: PageId) => {
+    go(id);
     setNavOpen(false);
   };
 
@@ -50,7 +40,7 @@ export default function App() {
         </div>
         <nav>
           {PAGES.map((p) => (
-            <button key={p.id} className={`nav-item ${page === p.id ? "active" : ""}`} onClick={() => go(p.id)}>
+            <button key={p.id} className={`nav-item ${page === p.id ? "active" : ""}`} onClick={() => nav(p.id)}>
               <span className="nav-icon">{p.icon}</span>
               {p.label}
             </button>
@@ -72,10 +62,11 @@ export default function App() {
           <div className="empty">Loading…</div>
         ) : (
           <>
-            {page === "dashboard" && <Dashboard go={go} />}
-            {page === "invoices" && <Invoices />}
+            {page === "dashboard" && <Dashboard />}
+            {page === "estimates" && <Estimates key={params.toString()} params={params} />}
+            {page === "invoices" && <Invoices key={params.toString()} params={params} />}
             {page === "expenses" && <Expenses />}
-            {page === "projects" && <Projects />}
+            {page === "projects" && <Projects key={params.toString()} params={params} />}
             {page === "clients" && <Clients />}
             {page === "settings" && <SettingsPage />}
           </>

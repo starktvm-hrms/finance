@@ -49,7 +49,7 @@ export default function Clients() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Client</th><th>Contact</th><th className="num">Projects</th><th className="num">Revenue</th><th className="num">Outstanding</th><th /></tr>
+              <tr><th>Client</th><th>Contact</th><th className="num">Jobs</th><th className="num">Revenue</th><th className="num">Outstanding</th><th /></tr>
             </thead>
             <tbody>
               {rows.map(({ c, projects, billed, due }) => (

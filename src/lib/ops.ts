@@ -1,6 +1,6 @@
 import type { AppData, Settings } from "../types";
 
-export type Collection = "clients" | "projects" | "invoices" | "expenses";
+export type Collection = "clients" | "projects" | "estimates" | "invoices" | "expenses";
 
 /**
  * A single change to the dataset. The UI applies ops locally (instant feedback)
@@ -19,13 +19,13 @@ export type Op =
 export function applyOp(d: AppData, o: Op): AppData {
   switch (o.op) {
     case "upsert": {
-      const list = d[o.col] as unknown as { id: string }[];
+      const list = (d[o.col] ?? []) as unknown as { id: string }[];
       const exists = list.some((x) => x.id === o.item.id);
       const next = exists ? list.map((x) => (x.id === o.item.id ? o.item : x)) : [o.item, ...list];
       return { ...d, [o.col]: next };
     }
     case "remove":
-      return { ...d, [o.col]: (d[o.col] as { id: string }[]).filter((x) => x.id !== o.id) };
+      return { ...d, [o.col]: ((d[o.col] ?? []) as { id: string }[]).filter((x) => x.id !== o.id) };
     case "settings":
       return { ...d, settings: { ...d.settings, ...o.patch } };
     case "replace":

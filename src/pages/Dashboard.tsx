@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useStore } from "../lib/store";
-import { computeMetrics } from "../lib/metrics";
+import { computeMetrics, workflowQueues } from "../lib/metrics";
+import { go, type PageId } from "../lib/route";
 import { fmtDate, invoiceTotals, money, monthLabel, shortMoney } from "../lib/util";
 import { Empty, PageHeader, Stat } from "../components/ui";
 
@@ -12,7 +13,7 @@ const RANGES = [
   { v: 12, label: "Last 12 months" },
 ];
 
-export default function Dashboard({ go }: { go: (p: "invoices" | "expenses") => void }) {
+export default function Dashboard() {
   const { data } = useStore();
   const s = data.settings;
   const [months, setMonths] = useState(6);
@@ -22,12 +23,31 @@ export default function Dashboard({ go }: { go: (p: "invoices" | "expenses") => 
   const chart = m.monthly.map((x) => ({ ...x, label: monthLabel(x.month, s.locale) }));
   const maxCat = m.byCategory[0]?.value || 1;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
+  const w = workflowQueues(data);
+  const tiles: { title: string; sub: string; count: number; hint: string; page: PageId; params: Record<string, string> }[] = [
+    { title: "Jobs", sub: "For estimate", count: w.jobsForEstimate.length, hint: "Leads waiting for a quote", page: "projects", params: { status: "needs_estimate" } },
+    { title: "Estimates", sub: "For approval", count: w.estimatesForApproval.length, hint: `${fm(w.approvalValue)} awaiting the client's decision`, page: "estimates", params: { status: "sent" } },
+    { title: "Invoice", sub: "To raise", count: w.invoiceToRaise.length, hint: `${fm(w.toRaiseValue)} approved, not yet invoiced`, page: "estimates", params: { status: "approved" } },
+    { title: "Invoice", sub: "To collect", count: w.invoiceToCollect.length, hint: `${fm(w.toCollectValue)} sent, not yet paid`, page: "invoices", params: { status: "unpaid" } },
+  ];
 
   return (
     <div className="page">
+      <PageHeader title="Dashboard" />
+
+      <div className="queues" role="list" aria-label="Work queues">
+        {tiles.map((t) => (
+          <button key={t.title + t.sub} role="listitem" className="card queue" onClick={() => go(t.page, t.params)} title={t.hint}>
+            <span className="queue-title">{t.title}</span>
+            <span className="queue-sub">{t.sub}</span>
+            <span className="queue-count">{t.count.toLocaleString(s.locale)}</span>
+          </button>
+        ))}
+      </div>
+
       <PageHeader
-        title="Dashboard"
-        subtitle="Cash-basis overview: revenue counts invoices when paid, excluding tax."
+        title="Financials"
+        subtitle="Cash basis: revenue counts invoices when paid, excluding tax."
         actions={
           <select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Period">
             {RANGES.map((r) => (
@@ -114,7 +134,7 @@ export default function Dashboard({ go }: { go: (p: "invoices" | "expenses") => 
         <div className="card span-2">
           <div className="row between">
             <h3>Overdue invoices</h3>
-            <button className="btn ghost" onClick={() => go("invoices")}>All invoices →</button>
+            <button className="btn ghost" onClick={() => go("invoices", { status: "overdue" })}>All overdue →</button>
           </div>
           {m.overdueList.length === 0 ? (
             <Empty>No overdue invoices. 🎉</Empty>
