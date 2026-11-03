@@ -86,10 +86,11 @@ export function sampleData(): AppData {
   const exp = (monthsAgo: number, vendor: string, category: AppData["expenses"][number]["category"], amount: number, projectId = "", recurring = false) => ({
     id: uid(), date: iso(monthsAgo, 2), vendor, category, amount, projectId, description: "", recurring, createdAt: created,
   });
-  const est = (num: number, clientId: string, projectId: string, monthsAgo: number, items: [string, number, number][], status: AppData["estimates"][number]["status"]) => {
+  const est = (type: AppData["estimates"][number]["type"], num: number, clientId: string, projectId: string, monthsAgo: number, items: [string, number, number][], status: AppData["estimates"][number]["status"]) => {
     const issue = iso(monthsAgo, 1);
     return {
       id: uid(),
+      type,
       number: `EST-${String(num).padStart(4, "0")}`,
       clientId,
       projectId,
@@ -106,10 +107,10 @@ export function sampleData(): AppData {
     };
   };
   data.estimates = [
-    est(1, c1, p1, 5, [["Website redesign: discovery, design, build, launch", 1, 700000]], "invoiced"),
-    est(2, c2, p7, 0, [["Landing page design", 1, 45000], ["Development", 1, 60000]], "sent"),
-    est(3, c1, p8, 0, [["Festive campaign creatives", 8, 6000], ["Media planning", 1, 25000]], "approved"),
-    est(4, c3, p4, 3, [["Brand identity (premium package)", 1, 400000]], "rejected"),
+    est("project", 1, c1, p1, 5, [["Website redesign: discovery, design, build, launch", 1, 700000]], "invoiced"),
+    est("creative", 2, c2, p7, 0, [["Landing page design", 1, 45000], ["Development", 1, 60000]], "sent"),
+    est("media", 3, c1, p8, 0, [["Festive campaign creatives", 8, 6000], ["Media planning", 1, 25000]], "approved"),
+    est("creative", 4, c3, p4, 3, [["Brand identity (premium package)", 1, 400000]], "rejected"),
   ];
   data.settings.nextEstimateNumber = 5;
 

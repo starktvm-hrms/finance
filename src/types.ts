@@ -95,12 +95,25 @@ export interface Invoice {
   createdAt: string;
 }
 
+/** Estimate types, shown as tabs on the Estimates page. */
+export const ESTIMATE_TYPES = [
+  { id: "creative", label: "Creative", hint: "Concepts, design, copy and campaign creative" },
+  { id: "production", label: "Production", hint: "Print, video and other production" },
+  { id: "media", label: "Media", hint: "Media buying: print, TV, radio, outdoor, digital" },
+  { id: "shoot", label: "Shoot", hint: "Photo and video shoots" },
+  { id: "events", label: "Events", hint: "Events, activations and launches" },
+  { id: "retainer", label: "Retainer", hint: "Monthly or ongoing retainers" },
+  { id: "project", label: "Project", hint: "One-off projects and everything else" },
+] as const;
+export type EstimateType = (typeof ESTIMATE_TYPES)[number]["id"];
+
 export type EstimateStatus = "draft" | "sent" | "approved" | "rejected" | "invoiced";
 
 /** A quote sent to the client for approval; once approved it becomes an invoice. */
 export interface Estimate {
   id: ID;
   number: string;
+  type?: EstimateType; // missing on estimates made before types existed → "project"
   clientId: ID;
   projectId: ID | "";
   issueDate: string;

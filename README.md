@@ -9,6 +9,8 @@ default, and can sync to your website's backend when you're ready.
 - **Dashboard** — revenue, expenses, net profit & margin, outstanding/overdue amounts,
   monthly income-vs-expense chart, expenses by category, revenue by client.
   Period: this month / 3 / 6 / 12 months. Cash basis (revenue counted when paid, tax excluded).
+- **Estimates** — one page with a tab per type (All, Creative, Production, Media, Shoot,
+  Events, Retainer, Project) and a status filter; approve and convert to an invoice.
 - **Invoices** — line items, discount, tax (GST/VAT), auto-numbering, payment terms,
   draft → sent → paid workflow, automatic *overdue* detection, print / save as PDF, CSV export.
 - **Expenses** — categories, link to a project or mark as overhead, recurring flag,
