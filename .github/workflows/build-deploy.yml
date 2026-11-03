@@ -32,7 +32,7 @@ jobs:
           VITE_API_URL: /api   # store data on the server (server/api.py)
 
       - name: Add the storage API to the published files
-        run: mkdir -p dist/_api && cp server/api.py dist/_api/api.py
+        run: mkdir -p dist/_api && cp server/api.py server/demo-accounts.json dist/_api/
 
       - name: Publish dist/ to the deploy branch
         run: |

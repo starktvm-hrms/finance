@@ -827,10 +827,61 @@ def cli(args: list[str]):
         sys.exit(__doc__)
 
 
+DEMO_FILE = Path(__file__).with_name("demo-accounts.json")
+
+
+def seed_demo():
+    """Create the demo logins in demo-accounts.json (and their employees) once.
+
+    Each username is remembered in users.json ("seeded"), so a demo login an
+    admin deletes is not created again. Existing logins are never touched."""
+    try:
+        spec = json.loads(DEMO_FILE.read_text("utf-8"))
+    except (FileNotFoundError, ValueError):
+        return
+    if auth_mode() != "on":
+        return  # only once sign-in is set up
+    with auth_lock:
+        doc = _read_json(USERS_FILE, {})
+        u = doc.get("users", {})
+        done = set(doc.get("seeded", []))
+        role_ids = {r.get("id") for r in roles()}
+        new = [a for a in spec.get("accounts", []) if a["username"] not in done and a["username"] not in u and a.get("role") in role_ids]
+        if not new:
+            return
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with lock:
+            d = state["data"]
+            if d is None:
+                return  # no data yet; try again on the next start
+            deps, emps = list(d.get("departments", [])), list(d.get("employees", []))
+            for a in new:
+                e = a["employee"]
+                dep = next((x for x in deps if str(x.get("name", "")).lower() == e["department"].lower()), None)
+                if not dep:
+                    dep = {"id": "demo-dep-" + "".join(c for c in e["department"].lower() if c.isalnum()), "name": e["department"], "description": "", "createdAt": now}
+                    deps.append(dep)
+                if not any(x.get("id") == e["id"] for x in emps):
+                    emps.append({"id": e["id"], "name": e["name"], "email": a["username"], "phone": "", "designation": e.get("designation", ""),
+                                 "departmentId": dep["id"], "branchId": "", "isHead": bool(e.get("isHead")), "active": True, "createdAt": now})
+            prev = (state["rev"], state["data"])
+            state["data"], state["rev"] = {**d, "departments": deps, "employees": emps}, state["rev"] + 1
+            try:
+                save()
+            except OSError:
+                state["rev"], state["data"] = prev
+                return
+        for a in new:
+            u[a["username"]] = {"hash": a["hash"], "role": a["role"], "employeeId": a["employee"]["id"]}
+        _write_json(USERS_FILE, {**_read_json(USERS_FILE, {}), "users": u, "seeded": sorted(done | {a["username"] for a in new})})
+        print(f"Created demo logins: {', '.join(a['username'] for a in new)}", flush=True)
+
+
 def main():
     if len(sys.argv) > 1:
         return cli(sys.argv[1:])
     load()
+    seed_demo()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Agency Finance API on 127.0.0.1:{PORT}, data in {DATA_DIR}", flush=True)
     srv.serve_forever()

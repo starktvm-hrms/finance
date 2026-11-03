@@ -1,0 +1,89 @@
+{
+  "_note": "Demo logins created once by api.py on startup (seed_demo). Only password hashes are stored here. Delete a login in Employees > Logins & access and it is not created again.",
+  "accounts": [
+    {
+      "username": "demo.mediahead@stark.in",
+      "role": "department_head",
+      "hash": "pbkdf2_sha256$310000$f02ec358c7b3ed4389b78b4896d45532$319e29acdf28200814e5c124af9725a88e6b1379f9126c9dd83c4d520b3fc2fc",
+      "employee": {
+        "id": "demo-emp-1",
+        "name": "Meera Pillai",
+        "department": "Media",
+        "designation": "Head of Media (demo)",
+        "isHead": true
+      }
+    },
+    {
+      "username": "demo.prodhead@stark.in",
+      "role": "department_head",
+      "hash": "pbkdf2_sha256$310000$6f9521cb162a4f912ec11be5f4371084$7e6df85c52d886cfb55cd885cbb7e500a13258241d4c7b1244b598de2e2b0d1e",
+      "employee": {
+        "id": "demo-emp-2",
+        "name": "Rahul Varma",
+        "department": "Production",
+        "designation": "Head of Production (demo)",
+        "isHead": true
+      }
+    },
+    {
+      "username": "demo.socialhead@stark.in",
+      "role": "department_head",
+      "hash": "pbkdf2_sha256$310000$388f42e5183e95755991edf712d105bc$a6cb49243cadb908b797ed3774e8d5ebfa7bcc68e6578226af8440956667416e",
+      "employee": {
+        "id": "demo-emp-3",
+        "name": "Sneha George",
+        "department": "Social Media",
+        "designation": "Head of Social Media (demo)",
+        "isHead": true
+      }
+    },
+    {
+      "username": "demo.ae.media@stark.in",
+      "role": "account_executive",
+      "hash": "pbkdf2_sha256$310000$45b3660f2805021641139585bec4f5f8$75489c2be5a464e2478c566bf8b9c65510c137d723789df4491b4efa6a632a2d",
+      "employee": {
+        "id": "demo-emp-4",
+        "name": "Arjun Menon",
+        "department": "Media",
+        "designation": "Account Executive (demo)",
+        "isHead": false
+      }
+    },
+    {
+      "username": "demo.ae.prod@stark.in",
+      "role": "account_executive",
+      "hash": "pbkdf2_sha256$310000$727422a8e504d797d7c4f667743d6383$f9bb3680a22bb8f82b6bcc9ed638595b35102e33b2dc9d819361c2b8565e3d32",
+      "employee": {
+        "id": "demo-emp-5",
+        "name": "Divya Nair",
+        "department": "Production",
+        "designation": "Account Executive (demo)",
+        "isHead": false
+      }
+    },
+    {
+      "username": "demo.ae.social@stark.in",
+      "role": "account_executive",
+      "hash": "pbkdf2_sha256$310000$ea30586c9ee98b7de525f6352ee68acf$ec9e491967772ec755936b5778da13c5c7057aaacf6f2d6eb9719896a3460bcf",
+      "employee": {
+        "id": "demo-emp-6",
+        "name": "Kiran Joseph",
+        "department": "Social Media",
+        "designation": "Account Executive (demo)",
+        "isHead": false
+      }
+    },
+    {
+      "username": "demo.finance@stark.in",
+      "role": "finance_executive",
+      "hash": "pbkdf2_sha256$310000$c4a269a591d7cae5e710c971f3d7678e$0a052045d3b324346136b9f486120270516f8867ccebd8ac61b65aef0e1eea86",
+      "employee": {
+        "id": "demo-emp-7",
+        "name": "Anjali Krishnan",
+        "department": "Finance",
+        "designation": "Finance Executive (demo)",
+        "isHead": false
+      }
+    }
+  ]
+}
