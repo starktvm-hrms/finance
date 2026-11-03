@@ -4,18 +4,21 @@ import { useStore } from "../lib/store";
 import { go } from "../lib/route";
 import { uid } from "../lib/util";
 import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
+import Access from "./Access";
 
 const TABS = [
   { id: "employees", label: "Employees" },
   { id: "departments", label: "Departments" },
   { id: "branches", label: "Branches" },
+  { id: "access", label: "Logins & access" }, // admins only
 ] as const;
 
 /** Employees page: one page, a tab per list (#/people?tab=departments). */
 export default function People({ params }: { params: URLSearchParams }) {
-  const { data } = useStore();
-  const tab = TABS.some((t) => t.id === params.get("tab")) ? (params.get("tab") as (typeof TABS)[number]["id"]) : "employees";
-  const count = { employees: data.employees.length, departments: data.departments.length, branches: data.branches.length };
+  const { data, access } = useStore();
+  const tabs = TABS.filter((t) => t.id !== "access" || access.admin);
+  const tab = tabs.some((t) => t.id === params.get("tab")) ? (params.get("tab") as (typeof TABS)[number]["id"]) : "employees";
+  const count: Record<string, number | null> = { employees: data.employees.length, departments: data.departments.length, branches: data.branches.length, access: null };
   return (
     <div className="page">
       <div className="page-head">
@@ -25,10 +28,10 @@ export default function People({ params }: { params: URLSearchParams }) {
         </div>
       </div>
       <div className="tabs directory-tabs" role="tablist" aria-label="Lists">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => go("people", t.id === "employees" ? undefined : { tab: t.id })}>
             {t.label}
-            <span className="tab-count">{count[t.id]}</span>
+            {count[t.id] !== null && <span className="tab-count">{count[t.id]}</span>}
           </button>
         ))}
       </div>
@@ -36,6 +39,7 @@ export default function People({ params }: { params: URLSearchParams }) {
         {tab === "employees" && <Employees />}
         {tab === "departments" && <Departments />}
         {tab === "branches" && <Branches />}
+        {tab === "access" && <Access />}
       </div>
     </div>
   );

@@ -102,6 +102,10 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .page-head > .row { flex-wrap: wrap; max-width: 100%; }
 .page-head > .row > input { flex: 1 1 140px; min-width: 0; }
+.notice { padding: 10px 14px; border-radius: 8px; background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
+.access-table th.center, .access-table td.center { text-align: center; }
+.access-table td.center input { width: 18px; height: 18px; }
+.access-table .role-name { padding: 4px 6px; font-weight: 600; width: 180px; }
 .alert { margin: 16px 32px 0; padding: 10px 14px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 
 /* Cards & stats */

@@ -9,7 +9,8 @@ export const vendorCategory = (id: string | null) => VENDOR_CATEGORIES.find((c) 
 
 /** One page for every vendor list (Publications, Suppliers, Channels, …). */
 export default function Vendors({ category }: { category: string }) {
-  const { data, upsert, remove } = useStore();
+  const { data, upsert, remove, can, access } = useStore();
+  const seeMoney = can("expenses");
   const s = data.settings;
   const cat = vendorCategory(category);
   const [edit, setEdit] = useState<Vendor | null>(null);
@@ -73,7 +74,7 @@ export default function Vendors({ category }: { category: string }) {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Name</th><th>Contact</th><th>Location</th><th className="num">Spend {year}</th><th className="num">Total spend</th><th /></tr>
+              <tr><th>Name</th><th>Contact</th><th>Location</th>{seeMoney && <><th className="num">Spend {year}</th><th className="num">Total spend</th></>}<th /></tr>
             </thead>
             <tbody>
               {rows.map((v) => {
@@ -83,13 +84,17 @@ export default function Vendors({ category }: { category: string }) {
                     <td><strong>{v.name}</strong>{!v.active && <> <Badge tone="muted">Inactive</Badge></>}{v.taxId && <div className="muted small">GSTIN {v.taxId}</div>}</td>
                     <td>{v.contactName}<div className="muted small">{[v.phone, v.email].filter(Boolean).join(" · ")}</div></td>
                     <td className="muted">{v.address || "—"}</td>
-                    <td className="num">{money(sp.thisYear, s)}</td>
-                    <td className="num">
-                      {sp.count ? (
-                        <button className="btn ghost" title="Show expenses" onClick={(e) => (e.stopPropagation(), go("expenses", { vendor: v.id }))}>{money(sp.total, s)}</button>
-                      ) : money(0, s)}
-                    </td>
-                    <td className="actions"><button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(v))}>Delete</button></td>
+                    {seeMoney && (
+                      <>
+                        <td className="num">{money(sp.thisYear, s)}</td>
+                        <td className="num">
+                          {sp.count ? (
+                            <button className="btn ghost" title="Show expenses" onClick={(e) => (e.stopPropagation(), go("expenses", { vendor: v.id }))}>{money(sp.total, s)}</button>
+                          ) : money(0, s)}
+                        </td>
+                      </>
+                    )}
+                    <td className="actions">{access.admin && <button className="btn ghost danger" onClick={(e) => (e.stopPropagation(), del(v))}>Delete</button>}</td>
                   </tr>
                 );
               })}

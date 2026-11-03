@@ -35,7 +35,7 @@ const TYPE_TABS = [{ id: "all", label: "All", hint: "Every estimate, of every ty
 const displayStatus = (e: Estimate) => (e.status === "sent" && e.validUntil && e.validUntil < today() ? "expired" : e.status);
 
 export default function Estimates({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings } = useStore();
+  const { data, upsert, remove, updateSettings, can } = useStore();
   const s = data.settings;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -152,7 +152,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     upsert("estimates", { ...e, status, decidedDate: status === "approved" || status === "rejected" ? today() : "" });
     // Approving a quote starts the job: mark leads active and use the quote as the budget if none is set.
     const job = data.projects.find((p) => p.id === e.projectId);
-    if (status === "approved" && job && (job.status === "lead" || !job.budget)) {
+    if (status === "approved" && job && can("jobs") && (job.status === "lead" || !job.budget)) {
       const t = invoiceTotals(e);
       upsert("projects", { ...job, status: job.status === "lead" ? "active" : job.status, budget: job.budget || t.net });
     }
@@ -201,7 +201,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
           <button className="btn ghost danger" onClick={() => decide(e, "rejected")}>Reject</button>
         </>
       )}
-      {e.status === "approved" && <button className="btn ghost good" onClick={() => createInvoice(e)}>Create invoice</button>}
+      {e.status === "approved" && can("invoices") && <button className="btn ghost good" onClick={() => createInvoice(e)}>Create invoice</button>}
     </>
   );
 

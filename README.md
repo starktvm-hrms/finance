@@ -88,6 +88,20 @@ Installs set up before the sign-in page existed keep working behind nginx's pop-
 until `deploy/vps-setup.sh` is run again; it imports that username and password and
 switches the site to the sign-in page.
 
+## Roles and access
+
+Each login has a role. **Admin** has every tab plus *Employees → Logins & access*, where an
+admin creates logins for employees and ticks which tabs each role can open (Dashboard, Jobs,
+Estimates, Invoices, Expenses, Clients & Vendors, Employees, Settings). Three roles exist to
+start with (Department head, Account executive, Finance executive); they can be renamed,
+changed, added or removed.
+
+The server enforces it (`server/api.py`): estimates, invoices and expenses are only sent to
+roles with that tab; changes to a tab's data are refused (403) without access; only admins
+can replace all data, delete clients, vendors or jobs, or manage logins. Logins created from
+the command line, and the original imported login, are admins. Roles live with the logins in
+`/var/lib/agency-finance/users.json`.
+
 ## Data storage
 
 - **Live site (finance.starkpeople.in):** data is stored **on the server** in

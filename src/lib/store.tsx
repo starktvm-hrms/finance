@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_DEPARTMENTS, type AppData, type Branch, type Client, type Department, type Employee, type Estimate, type Expense, type Invoice, type Project, type Settings, type Vendor } from "../types";
-import { SignedOutError, getAdapter, readBrowserData } from "./adapter";
+import { ForbiddenError, SignedOutError, getAdapter, readBrowserData, type Me } from "./adapter";
+import { FULL_ACCESS, type Access } from "./access";
 import { applyOp, type Collection, type Op } from "./ops";
 import { emptyData, letterheadPatch, sampleData, withDefaultDepartments } from "./seed";
 
@@ -35,6 +36,9 @@ interface Store {
   shared: boolean;
   auth: AuthState;
   user: string | null;
+  /** What this user may open and change (everything unless signed in with a limited role). */
+  access: Access;
+  can(area: string): boolean;
   signIn(username: string, password: string, remember: boolean): Promise<void>;
   signOut(): Promise<void>;
   changePassword(current: string, next: string): Promise<void>;
@@ -61,6 +65,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [sync, setSync] = useState<SyncState>("loading");
   const [auth, setAuth] = useState<AuthState>(adapter.auth ? "checking" : "off");
+  const [access, setAccess] = useState<Access>(FULL_ACCESS);
+  const accessRef = useRef<Access>(FULL_ACCESS);
+  const applyMe = (me: Me) => {
+    const a: Access = me.mode === "legacy" || me.admin !== false
+      ? FULL_ACCESS
+      : { admin: false, areas: me.areas ?? [], roleName: me.roleName ?? me.role ?? "" };
+    accessRef.current = a;
+    setAccess(a);
+  };
   const [user, setUser] = useState<string | null>(null);
   const loaded = useRef(false);
 
@@ -94,6 +107,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       setError("");
     } catch (e) {
+      if (e instanceof ForbiddenError) {
+        // Not allowed: drop these changes and reload what the server has.
+        inflight.current = false;
+        setError(`${e.message} The change was not saved.`);
+        setSync(queue.current.length ? "saving" : "saved");
+        rev.current = 0;
+        window.setTimeout(() => pollRef.current(), 0);
+        if (queue.current.length) schedule(FLUSH_MS);
+        return;
+      }
       queue.current.unshift(...ops); // keep them and retry
       if (e instanceof SignedOutError) {
         inflight.current = false;
@@ -129,6 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .me()
       .then((me) => {
         setUser(me.user);
+        applyMe(me);
         setAuth(me.mode === "legacy" ? "off" : "signed-in");
       })
       .catch((e) => {
@@ -159,7 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const d = normalize(snap.data);
           setData(d);
           // One-time: data saved before departments existed gets the default list.
-          if (!Array.isArray(snap.data.departments)) {
+          if (!Array.isArray(snap.data.departments) && accessRef.current.admin) {
             const t0 = Date.now();
             for (const [i, name] of DEFAULT_DEPARTMENTS.entries()) {
               const item = { id: crypto.randomUUID?.() ?? `${t0}-${name}`, name, description: "", createdAt: new Date(t0 + i).toISOString() };
@@ -169,7 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             await flush();
           }
           // One-time: put the agency's letterhead into blank Settings fields.
-          const patch = letterheadPatch(d.settings);
+          const patch = accessRef.current.admin ? letterheadPatch(d.settings) : null;
           if (patch) {
             setData((x) => applyOp(x, { op: "settings", patch }));
             queue.current.push({ op: "settings", patch });
@@ -245,6 +269,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (username: string, password: string, remember: boolean) => {
     const me = await adapter.auth!.login(username, password, remember);
     setUser(me.user);
+    applyMe(await adapter.auth!.me().catch(() => me));
     setError("");
     setAuth(me.mode === "legacy" ? "off" : "signed-in");
   }, []);
@@ -267,7 +292,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
+    <Ctx.Provider value={{ data, ready, error, sync, storageName: adapter.name, shared: adapter.shared, auth, user, access, can: (area: string) => access.admin || access.areas.includes(area), signIn, signOut, changePassword, upsert, remove, updateSettings, replaceAll }}>
       {children}
     </Ctx.Provider>
   );

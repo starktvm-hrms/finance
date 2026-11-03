@@ -32,7 +32,7 @@ const STATUSES: { id: Filter; label: string; hint: string }[] = [
 const matches = (f: Filter, st: DisplayStatus) => f === "all" || f === st || (f === "unpaid" && (st === "sent" || st === "overdue"));
 
 export default function Invoices({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings } = useStore();
+  const { data, upsert, remove, updateSettings, can } = useStore();
   const s = data.settings;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -215,7 +215,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                 if (confirmDelete(`invoice ${view.number}`)) {
                   remove("invoices", view.id);
                   const est = fromEstimate(view);
-                  if (est) upsert("estimates", { ...est, status: "approved", invoiceId: "" }); // back to "to raise"
+                  if (est && can("estimates")) upsert("estimates", { ...est, status: "approved", invoiceId: "" }); // back to "to raise"
                   setView(null);
                 }
               }}
