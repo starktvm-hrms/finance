@@ -8,10 +8,10 @@ import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../compon
 export const vendorCategory = (id: string | null) => VENDOR_CATEGORIES.find((c) => c.id === id) ?? VENDOR_CATEGORIES[0];
 
 /** One page for every vendor list (Publications, Suppliers, Channels, …). */
-export default function Vendors({ params }: { params: URLSearchParams }) {
+export default function Vendors({ category }: { category: string }) {
   const { data, upsert, remove } = useStore();
   const s = data.settings;
-  const cat = vendorCategory(params.get("category"));
+  const cat = vendorCategory(category);
   const [edit, setEdit] = useState<Vendor | null>(null);
   const [q, setQ] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -50,8 +50,9 @@ export default function Vendors({ params }: { params: URLSearchParams }) {
   const inactiveCount = all.filter((v) => !v.active).length;
 
   return (
-    <div className="page">
+    <div className="tab-panel">
       <PageHeader
+        level={2}
         title={cat.label}
         subtitle={`${cat.hint} · ${all.length} ${all.length === 1 ? "entry" : "entries"}`}
         actions={
