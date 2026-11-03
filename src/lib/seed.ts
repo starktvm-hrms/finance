@@ -11,11 +11,14 @@ export const defaultSettings: Settings = {
   defaultTaxRate: 18,
   invoicePrefix: "INV-",
   nextInvoiceNumber: 1,
+  estimatePrefix: "EST-",
+  nextEstimateNumber: 1,
+  estimateValidDays: 30,
   paymentTermsDays: 15,
 };
 
 export function emptyData(): AppData {
-  return { version: 1, settings: { ...defaultSettings }, clients: [], projects: [], invoices: [], expenses: [] };
+  return { version: 1, settings: { ...defaultSettings }, clients: [], projects: [], estimates: [], invoices: [], expenses: [] };
 }
 
 /** Sample data so the dashboard isn't empty on first run. Clear it from Settings. */
@@ -26,7 +29,7 @@ export function sampleData(): AppData {
   const created = new Date().toISOString();
 
   const c1 = uid(), c2 = uid(), c3 = uid();
-  const p1 = uid(), p2 = uid(), p3 = uid(), p4 = uid();
+  const p1 = uid(), p2 = uid(), p3 = uid(), p4 = uid(), p5 = uid(), p6 = uid(), p7 = uid(), p8 = uid();
 
   const data = emptyData();
   data.clients = [
@@ -39,6 +42,10 @@ export function sampleData(): AppData {
     { id: p2, clientId: c1, name: "Social media retainer", status: "active", budget: 60000 * 12, startDate: iso(4, 1), endDate: "", notes: "Monthly retainer", createdAt: created },
     { id: p3, clientId: c2, name: "Lead-gen campaign", status: "active", budget: 300000, startDate: iso(2, 10), endDate: "", notes: "", createdAt: created },
     { id: p4, clientId: c3, name: "Brand identity", status: "active", budget: 250000, startDate: iso(3, 1), endDate: "", notes: "", createdAt: created },
+    { id: p5, clientId: c3, name: "Annual report design", status: "lead", budget: 0, startDate: "", endDate: "", notes: "Needs an estimate", createdAt: created },
+    { id: p6, clientId: c2, name: "SEO audit", status: "lead", budget: 0, startDate: "", endDate: "", notes: "", createdAt: created },
+    { id: p7, clientId: c2, name: "Landing page sprint", status: "lead", budget: 0, startDate: "", endDate: "", notes: "", createdAt: created },
+    { id: p8, clientId: c1, name: "Festive campaign", status: "active", budget: 0, startDate: iso(0, 1), endDate: "", notes: "", createdAt: created },
   ];
 
   let n = 1;
@@ -79,6 +86,33 @@ export function sampleData(): AppData {
   const exp = (monthsAgo: number, vendor: string, category: AppData["expenses"][number]["category"], amount: number, projectId = "", recurring = false) => ({
     id: uid(), date: iso(monthsAgo, 2), vendor, category, amount, projectId, description: "", recurring, createdAt: created,
   });
+  const est = (num: number, clientId: string, projectId: string, monthsAgo: number, items: [string, number, number][], status: AppData["estimates"][number]["status"]) => {
+    const issue = iso(monthsAgo, 1);
+    return {
+      id: uid(),
+      number: `EST-${String(num).padStart(4, "0")}`,
+      clientId,
+      projectId,
+      issueDate: issue,
+      validUntil: addDays(issue, 30),
+      status,
+      items: items.map(([description, quantity, rate]) => ({ id: uid(), description, quantity, rate })),
+      taxRate: 18,
+      discount: 0,
+      notes: "",
+      decidedDate: status === "approved" || status === "rejected" || status === "invoiced" ? addDays(issue, 4) : "",
+      invoiceId: status === "invoiced" ? data.invoices[0].id : "",
+      createdAt: created,
+    };
+  };
+  data.estimates = [
+    est(1, c1, p1, 5, [["Website redesign: discovery, design, build, launch", 1, 700000]], "invoiced"),
+    est(2, c2, p7, 0, [["Landing page design", 1, 45000], ["Development", 1, 60000]], "sent"),
+    est(3, c1, p8, 0, [["Festive campaign creatives", 8, 6000], ["Media planning", 1, 25000]], "approved"),
+    est(4, c3, p4, 3, [["Brand identity (premium package)", 1, 400000]], "rejected"),
+  ];
+  data.settings.nextEstimateNumber = 5;
+
   data.expenses = [];
   for (let m = 5; m >= 0; m--) {
     data.expenses.push(exp(m, "Team payroll", "Salaries", 95000, "", true));

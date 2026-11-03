@@ -30,7 +30,7 @@ DATA_FILE = DATA_DIR / "data.json"
 BACKUP_DIR = DATA_DIR / "backups"
 KEEP_BACKUPS = 30
 MAX_BODY = 10 * 1024 * 1024
-COLLECTIONS = {"clients", "projects", "invoices", "expenses"}
+COLLECTIONS = {"clients", "projects", "estimates", "invoices", "expenses"}
 
 lock = threading.Lock()
 state = {"rev": 0, "data": None}
@@ -63,8 +63,10 @@ def save():
 
 
 def valid_dataset(d):
+    # Collections added in later versions (e.g. estimates) may be missing in
+    # older backups; any that are present must be lists.
     return isinstance(d, dict) and isinstance(d.get("settings"), dict) and all(
-        isinstance(d.get(c), list) for c in COLLECTIONS
+        isinstance(d.get(c, []), list) for c in COLLECTIONS
     )
 
 

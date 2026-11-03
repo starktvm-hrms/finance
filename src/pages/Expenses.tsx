@@ -58,7 +58,7 @@ export default function Expenses() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Date</th><th>Vendor</th><th>Category</th><th>Project</th><th className="num">Amount</th><th /></tr>
+              <tr><th>Date</th><th>Vendor</th><th>Category</th><th>Job</th><th className="num">Amount</th><th /></tr>
             </thead>
             <tbody>
               {rows.map((e) => (
@@ -90,9 +90,9 @@ export default function Expenses() {
                 {EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
               </select>
             </Field>
-            <Field label="Project (optional)" span={2}>
+            <Field label="Job (optional)" span={2}>
               <select value={edit.projectId} onChange={(e) => setEdit({ ...edit, projectId: e.target.value })}>
-                <option value="">— Overhead / not project-specific —</option>
+                <option value="">— Overhead / not job-specific —</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
