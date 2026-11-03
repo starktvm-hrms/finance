@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Directory from "./pages/Directory";
 import Login from "./pages/Login";
 import People from "./pages/People";
+import ProfileMenu from "./components/ProfileMenu";
 import { BRAND_MARK } from "./lib/brand";
 import { areaOfPage, pageAllowed } from "./lib/access";
 import { useStore } from "./lib/store";
@@ -80,9 +81,10 @@ export default function App() {
       </aside>
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <main className="main">
-        <div className="topbar">
+        <div className={`topbar ${auth === "signed-in" ? "" : "no-profile"}`}>
           <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
           <span className="topbar-title">{pageLabel}</span>
+          {auth === "signed-in" && <ProfileMenu />}
         </div>
         {error && (
           <div className="alert">
