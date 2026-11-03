@@ -1,6 +1,6 @@
 import type { AppData, Settings } from "../types";
 
-export type Collection = "clients" | "vendors" | "projects" | "estimates" | "invoices" | "expenses";
+export type Collection = "clients" | "vendors" | "employees" | "departments" | "branches" | "projects" | "estimates" | "invoices" | "expenses";
 
 /**
  * A single change to the dataset. The UI applies ops locally (instant feedback)

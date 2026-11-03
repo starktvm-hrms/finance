@@ -158,7 +158,7 @@ export default function SettingsPage() {
           </Field>
           {s.jobNumberStyle === "prefix" && <Field label="Job prefix"><input value={s.jobPrefix} onChange={(e) => updateSettings({ jobPrefix: e.target.value })} /></Field>}
           <Field label="Next job number"><input type="number" min={1} value={s.nextJobNumber} onChange={(e) => updateSettings({ nextJobNumber: Number(e.target.value) })} /></Field>
-          <Field label="Department heads (one per line; they can approve new jobs)" span={2}>
+          <Field label="Other job approvers (one per line). Department heads ticked in Employees are included automatically" span={2}>
             <textarea rows={3} defaultValue={s.departmentHeads.join("\n")} placeholder={"Priya (Creative)\nRahul (Media)"}
               onChange={(e) => updateSettings({ departmentHeads: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} />
           </Field>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Directory from "./pages/Directory";
 import Login from "./pages/Login";
+import People from "./pages/People";
 import { BRAND_MARK } from "./lib/brand";
 import { useStore } from "./lib/store";
 import Dashboard from "./pages/Dashboard";
@@ -18,6 +19,7 @@ const PAGES: { id: PageId; label: string; icon: string }[] = [
   { id: "invoices", label: "Invoices", icon: "▤" },
   { id: "expenses", label: "Expenses", icon: "◫" },
   { id: "vendors", label: "Clients & Vendors", icon: "◉" },
+  { id: "people", label: "Employees", icon: "◎" },
   { id: "settings", label: "Settings", icon: "⚙" },
 ];
 
@@ -82,6 +84,7 @@ export default function App() {
             {page === "invoices" && <Invoices key={params.toString()} params={params} />}
             {page === "expenses" && <Expenses key={params.toString()} params={params} />}
             {page === "projects" && <Projects key={params.toString()} params={params} />}
+            {page === "people" && <People key={params.toString()} params={params} />}
             {inDirectory && <Directory key={params.toString()} tab={page === "clients" ? "clients" : params.get("category") ?? "clients"} />}
             {page === "settings" && <SettingsPage />}
           </>

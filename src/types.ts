@@ -103,6 +103,39 @@ export interface Vendor {
   createdAt: string;
 }
 
+export interface Department {
+  id: ID;
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface Branch {
+  id: ID;
+  name: string;
+  address: string;
+  phone: string;
+  createdAt: string;
+}
+
+export interface Employee {
+  id: ID;
+  name: string;
+  email: string;
+  phone: string;
+  designation: string;
+  departmentId: ID | "";
+  branchId: ID | "";
+  isHead: boolean; // department head: can approve new jobs
+  active: boolean;
+  createdAt: string;
+}
+
+/** Departments every new agency starts with (editable). */
+export const DEFAULT_DEPARTMENTS = [
+  "Admin", "Finance", "Production", "Media", "Social Media", "Service(T)", "Service(NT)", "Management", "Human Resources",
+];
+
 export type ProjectStatus = "lead" | "active" | "on_hold" | "completed" | "cancelled";
 
 export interface JobApproval {
@@ -248,6 +281,9 @@ export interface AppData {
   settings: Settings;
   clients: Client[];
   vendors: Vendor[];
+  employees: Employee[];
+  departments: Department[];
+  branches: Branch[];
   projects: Project[];
   estimates: Estimate[];
   invoices: Invoice[];

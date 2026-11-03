@@ -222,7 +222,15 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
   const subProducts = products.find((p) => p.name.toLowerCase() === (job.product ?? "").trim().toLowerCase())?.subProducts ?? [];
   const contacts = [client?.contactName, ...data.projects.filter((p) => p.clientId === job.clientId).map((p) => p.contactPerson)]
     .filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
-  const heads = s.departmentHeads.filter(Boolean);
+  // Department heads from Employees (ticked "Department head"), plus any typed in Settings.
+  const heads = [
+    ...new Set([
+      ...data.employees
+        .filter((e) => e.isHead && e.active)
+        .map((e) => { const d = data.departments.find((x) => x.id === e.departmentId)?.name; return d ? `${e.name} (${d})` : e.name; }),
+      ...s.departmentHeads.filter(Boolean),
+    ]),
+  ];
   // The number is generated from the client and date; it can still be typed over.
   const [numberTyped, setNumberTyped] = useState(isNew ? false : !!initial.number);
   const autoNo = makeJobNumber(s, client, job.startDate, s.nextJobNumber);
@@ -283,7 +291,7 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
         <label className="check span2"><input type="checkbox" checked={approve} onChange={(e) => setApprove(e.target.checked)} /> Send for approval</label>
         <Field label="Department head" span={2}>
           <select required={approve} disabled={!approve} value={head} onChange={(e) => setHead(e.target.value)}>
-            <option value="">{heads.length ? "Select…" : "Add department heads in Settings"}</option>
+            <option value="">{heads.length ? "Select…" : "Tick “Department head” on employees first"}</option>
             {heads.map((h) => <option key={h} value={h}>{h}</option>)}
           </select>
         </Field>
