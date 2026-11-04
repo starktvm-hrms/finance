@@ -206,6 +206,8 @@ export interface Invoice {
   paidDate: string;
   country?: CountryCode;
   roundOff?: boolean;
+  estimateId?: ID; // the estimate it bills (part or full)
+  billing?: "full" | "part" | "balance"; // how much of that estimate it bills
   // Same printed fields as estimates (copied from the estimate it was raised from)
   type?: EstimateType;
   title?: string;

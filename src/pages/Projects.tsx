@@ -152,7 +152,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
         ) : (
           <table className="table jobs-table">
             <thead>
-              <tr><th>Job No.</th><th>Job</th>{typeTab === "all" && <th>Category</th>}<th>Type</th><th>Status</th>{can("estimates") && <th>Estimate</th>}<th className="num">Budget</th>{seeMoney && <><th className="num">Invoiced</th><th className="num">Costs</th><th className="num">Profit</th><th>Billed</th></>}<th /></tr>
+              <tr><th>Job</th><th>{typeTab === "all" ? "Category / type" : "Type"}</th><th>Status</th>{can("estimates") && <th>Estimate</th>}<th className="num">Budget</th>{seeMoney && <><th className="num">Invoiced</th><th className="num">Profit</th></>}<th /></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -160,15 +160,17 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                 const pct = p.budget ? Math.min(100, Math.round((f.invoiced / p.budget) * 100)) : 0;
                 return (
                   <tr key={p.id} className="clickable" onClick={() => go("job", { id: p.id })} title="Open job details">
-                    <td className="nowrap">{p.number ?? <span className="muted">—</span>}</td>
-                    <td>
+                    <td className="job-cell">
+                      {p.number && <div className="job-no">{p.number}</div>}
                       <strong>{p.name}</strong>
                       <div className="muted small">
                         {[clientName(p.clientId), [p.product, p.subProduct].filter(Boolean).join(" › "), fmtDate(p.startDate, s.locale)].filter(Boolean).join(" · ")}
                       </div>
                     </td>
-                    {typeTab === "all" && <td className="muted">{ESTIMATE_TYPES.find((t) => t.id === catOf(p))?.label}</td>}
-                    <td>{p.jobType ?? <span className="muted">—</span>}</td>
+                    <td>
+                      {typeTab === "all" && <div>{ESTIMATE_TYPES.find((t) => t.id === catOf(p))?.label}</div>}
+                      <div className={typeTab === "all" ? "muted small" : ""}>{p.jobType ?? (typeTab === "all" ? "" : <span className="muted">—</span>)}</div>
+                    </td>
                     <td onClick={(e) => p.approval?.status === "pending" && e.stopPropagation()}>
                       <Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge>
                       {p.approval && (
@@ -203,18 +205,20 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                     <td className="num">{money(p.budget, s)}</td>
                     {seeMoney && (
                       <>
-                        <td className="num">{money(f.invoiced, s)}</td>
-                        <td className="num">{money(f.cost, s)}</td>
-                        <td className={`num ${f.profit < 0 ? "bad" : "good"}`}>{money(f.profit, s)}</td>
-                        <td style={{ minWidth: 90 }}>
-                          <div className="bar-track" title={`${pct}% of budget invoiced`}><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
-                          <div className="muted small">{pct}%</div>
+                        <td className="num">
+                          {money(f.invoiced, s)}
+                          <div className="bar-track mini" title={`${pct}% of budget invoiced`}><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+                          <div className="muted small">{pct}% billed</div>
+                        </td>
+                        <td className="num">
+                          <span className={f.profit < 0 ? "bad" : "good"}>{money(f.profit, s)}</span>
+                          <div className="muted small">costs {money(f.cost, s)}</div>
                         </td>
                       </>
                     )}
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
-                      <button className="btn ghost" onClick={() => setEdit(p)}>Edit</button>
-                      {access.admin && <button className="btn ghost danger" onClick={() => del(p)}>Delete</button>}
+                      <button className="icon-btn row-icon" onClick={() => setEdit(p)} title="Edit job" aria-label={`Edit ${p.name}`}>✎</button>
+                      {access.admin && <button className="icon-btn row-icon danger" onClick={() => del(p)} title="Delete job" aria-label={`Delete ${p.name}`}>🗑</button>}
                     </td>
                   </tr>
                 );

@@ -36,7 +36,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
   const s = data.settings;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
-  const fromEstimate = (inv: Invoice) => data.estimates.find((e) => e.invoiceId === inv.id);
+  const fromEstimate = (inv: Invoice) => data.estimates.find((e) => (inv.estimateId ? e.id === inv.estimateId : e.invoiceId === inv.id));
   const isNew = (inv: Invoice) => !data.invoices.some((i) => i.id === inv.id);
 
   const blank = (): Invoice => {
@@ -207,7 +207,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
       {view && (
         <Modal title={`Invoice ${view.number}`} onClose={() => setView(null)} wide>
           {estimateType(view) === "media" ? <MediaEstimate est={view} kind="invoice" /> : <ProductionEstimate est={view} kind="invoice" />}
-          {fromEstimate(view) && <p className="muted small no-print">Raised from estimate {fromEstimate(view)!.number}.</p>}
+          {fromEstimate(view) && <p className="muted small no-print">{view.billing === "part" ? "Part invoice" : view.billing === "balance" ? "Balance invoice" : "Raised"} from estimate {fromEstimate(view)!.number}.</p>}
           <div className="form-actions no-print">
             <button
               className="btn ghost danger"
@@ -215,7 +215,8 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
                 if (confirmDelete(`invoice ${view.number}`)) {
                   remove("invoices", view.id);
                   const est = fromEstimate(view);
-                  if (est && can("estimates")) upsert("estimates", { ...est, status: "approved", invoiceId: "" }); // back to "to raise"
+                  // The estimate goes back to "to raise" for what this invoice billed.
+                  if (est && can("estimates")) upsert("estimates", { ...est, status: est.status === "invoiced" ? "approved" : est.status, invoiceId: est.invoiceId === view.id ? "" : est.invoiceId });
                   setView(null);
                 }
               }}
