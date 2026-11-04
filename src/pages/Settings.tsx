@@ -8,6 +8,7 @@ import { emptyData, sampleData } from "../lib/seed";
 import { readBrowserData } from "../lib/adapter";
 import { downloadFile, today } from "../lib/util";
 import { Field, PageHeader } from "../components/ui";
+import { makeInvoiceNumber } from "../lib/invoiceno";
 import { JOB_NUMBER_STYLES, makeJobNumber, type JobNumberStyle } from "../lib/jobno";
 
 const CURRENCIES = [
@@ -143,8 +144,11 @@ export default function SettingsPage() {
             </select>
           </Field>
           <Field label="Default tax rate (%)"><input type="number" min={0} step="0.01" value={s.defaultTaxRate} onChange={(e) => updateSettings({ defaultTaxRate: Number(e.target.value) })} /></Field>
-          <Field label="Invoice prefix"><input value={s.invoicePrefix} onChange={(e) => updateSettings({ invoicePrefix: e.target.value })} /></Field>
-          <Field label="Next invoice number"><input type="number" min={1} value={s.nextInvoiceNumber} onChange={(e) => updateSettings({ nextInvoiceNumber: Number(e.target.value) })} /></Field>
+          <Field label={`Next invoice serial number (invoices are numbered branch code / financial year / serial, e.g. ${makeInvoiceNumber(data, today(), undefined)})`}>
+            <input type="number" min={1} value={s.nextInvoiceNumber} onChange={(e) => updateSettings({ nextInvoiceNumber: Number(e.target.value) })} />
+          </Field>
+          <Field label="SAC code printed under invoice lines (blank = none)"><input value={s.sacCode ?? ""} onChange={(e) => updateSettings({ sacCode: e.target.value.trim() })} placeholder="e.g. 998364" /></Field>
+          <Field label="Invoice signatures (comma-separated)" span={2}><input value={s.invoiceSignatureLabels ?? "Authorized Signatory, AE, AS, ME"} onChange={(e) => updateSettings({ invoiceSignatureLabels: e.target.value })} /></Field>
           <Field label="Payment terms (days)"><input type="number" min={0} value={s.paymentTermsDays} onChange={(e) => updateSettings({ paymentTermsDays: Number(e.target.value) })} /></Field>
           <div />
           <Field label="Production estimate prefix"><input value={s.productionEstimatePrefix} onChange={(e) => updateSettings({ productionEstimatePrefix: e.target.value })} /></Field>

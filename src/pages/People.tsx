@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Branch, Department, Employee } from "../types";
+import { branchCode, makeInvoiceNumber } from "../lib/invoiceno";
 import { useStore } from "../lib/store";
 import { go } from "../lib/route";
 import { uid } from "../lib/util";
@@ -256,10 +257,11 @@ function Branches() {
       <div className="card flush">
         {data.branches.length === 0 ? <Empty>No branches yet. Add your offices, e.g. Thiruvananthapuram (head office).</Empty> : (
           <table className="table">
-            <thead><tr><th>Name</th><th>Address</th><th>Phone</th><th className="num">Employees</th><th /></tr></thead>
+            <thead><tr><th>Code</th><th>Name</th><th>Address</th><th>Phone</th><th className="num">Employees</th><th /></tr></thead>
             <tbody>
               {data.branches.map((b) => (
                 <tr key={b.id} className="clickable" onClick={() => setEdit(b)}>
+                  <td>{b.code ? <span className="code-tag">{b.code}</span> : <span className="muted small">{branchCode(b)} (auto)</span>}</td>
                   <td><strong>{b.name}</strong></td>
                   <td className="muted pre">{b.address || "—"}</td>
                   <td className="nowrap">{b.phone || <span className="muted">—</span>}</td>
@@ -277,6 +279,10 @@ function Branches() {
             <Field label="Name *" span={2}><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Thiruvananthapuram (HO)" /></Field>
             <Field label="Address" span={2}><textarea rows={3} value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
             <Field label="Phone"><input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
+            <Field label="Branch code (starts invoice numbers)">
+              <input value={edit.code ?? ""} maxLength={6} pattern="[A-Za-z]{2,6}" onChange={(e) => setEdit({ ...edit, code: e.target.value.replace(/[^A-Za-z]/g, "").toLowerCase() })} placeholder="e.g. tvpm" title="2–6 letters" />
+            </Field>
+            <p className="muted small span2">Invoices from this branch are numbered {makeInvoiceNumber({ ...data, branches: [{ ...edit, code: edit.code || branchCode(edit) }] }, new Date().toISOString().slice(0, 10), edit.id)} and so on.</p>
             <div className="form-actions span2">
               <button type="button" className="btn" onClick={() => setEdit(null)}>Cancel</button>
               <button className="btn primary">Save</button>
