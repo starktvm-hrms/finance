@@ -64,14 +64,10 @@ export default function Projects({ params }: { params: URLSearchParams }) {
 
   const saveJob = (job: Project, sendForApproval: boolean, head: string) => {
     let next: Project = { ...job, name: job.name.trim(), product: job.product?.trim(), subProduct: job.subProduct?.trim() };
-    next.number = next.number?.trim() || undefined;
-    const clash = next.number && data.projects.find((p) => p.id !== job.id && p.number?.toLowerCase() === next.number!.toLowerCase());
-    if (clash && !window.confirm(`Job No. ${next.number} is already used by "${clash.name}". Save anyway?`)) return;
     next.jobType = next.jobType?.trim() || undefined;
-    const auto = makeJobNumber(s, data.clients.find((c) => c.id === next.clientId), next.startDate, s.nextJobNumber);
-    if (!next.number || next.number === auto) {
-      // Generated number: client code + YY + MM + running number (e.g. HLL26100417).
-      next.number = auto;
+    if (!next.number) {
+      // Automatic: client code + serial number + the job's date (layout set in Settings).
+      next.number = makeJobNumber(s, data.clients.find((c) => c.id === next.clientId), next.startDate, s.nextJobNumber);
       updateSettings({ nextJobNumber: s.nextJobNumber + 1 });
     }
     if (sendForApproval && head && (next.approval?.head !== head || next.approval?.status === "rejected")) {
@@ -258,10 +254,8 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
       ...s.departmentHeads.filter(Boolean),
     ]),
   ];
-  // The number is generated from the client and date; it can still be typed over.
-  const [numberTyped, setNumberTyped] = useState(isNew ? false : !!initial.number);
+  // The number is generated from the client code, serial and date when the job is first saved.
   const autoNo = makeJobNumber(s, client, job.startDate, s.nextJobNumber);
-  const shownNo = numberTyped ? job.number ?? "" : isNew ? (job.clientId ? autoNo : "") : job.number ?? "";
   const typeSuggestions = [
     ...new Set(
       [...data.projects.map((p) => p.jobType), ...data.estimates.map((e) => e.jobType), ...COMMON_JOB_TYPES].filter((x): x is string => !!x),
@@ -270,7 +264,7 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
 
   return (
     <Modal title={isNew ? "Add Job" : `Edit job ${job.number ?? ""}`} onClose={onCancel}>
-      <form className="form form-rows" onSubmit={(e) => { e.preventDefault(); onSave(numberTyped || !isNew ? job : { ...job, number: "" }, approve, head); }}>
+      <form className="form form-rows" onSubmit={(e) => { e.preventDefault(); onSave(isNew ? { ...job, number: "" } : job, approve, head); }}>
         <Field label="Client *" span={2}>
           <select required autoFocus value={job.clientId} onChange={(e) => setJob({ ...job, clientId: e.target.value, product: "", subProduct: "", contactPerson: "" })}>
             <option value="" disabled>Select…</option>
@@ -289,18 +283,15 @@ function JobForm({ initial, isNew, onSave, onCancel }: { initial: Project; isNew
           <input required list="job-subproducts" disabled={!job.product?.trim()} value={job.subProduct ?? ""} onChange={(e) => setJob({ ...job, subProduct: e.target.value })} placeholder={job.product?.trim() ? "Select or type a new sub-product" : "Choose a product first"} />
           <datalist id="job-subproducts">{subProducts.map((p) => <option key={p} value={p} />)}</datalist>
         </Field>
-        <Field label="Job No." span={2}>
-          <span className="row gap">
-            <input
-              aria-label="Job number"
-              value={shownNo}
-              onChange={(e) => { setNumberTyped(true); setJob({ ...job, number: e.target.value }); }}
-              placeholder={job.clientId ? autoNo : "Generated when you pick the client"}
-            />
-            {numberTyped && isNew && (
-              <button type="button" className="btn ghost" onClick={() => { setNumberTyped(false); setJob({ ...job, number: "" }); }} title="Use the generated number">Auto</button>
-            )}
-          </span>
+        <Field label="Job No. (automatic)" span={2}>
+          <input
+            aria-label="Job number"
+            readOnly
+            className="readonly"
+            value={isNew ? (job.clientId ? autoNo : "") : job.number || (job.clientId ? `${autoNo} (given on save)` : "")}
+            placeholder="Generated when you pick the client"
+            title={isNew ? "Generated from the client code, serial number and the job's date when you save" : "Job numbers don't change once given"}
+          />
         </Field>
         <Field label="Department" span={2}>
           <select value={job.departmentId ?? ""} onChange={(e) => setJob({ ...job, departmentId: e.target.value || undefined })}>

@@ -224,6 +224,10 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .chip.cancelled { color: var(--muted); text-decoration: line-through; }
 .billing-box { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .billing-box .billing { max-width: 360px; }
+.pay-est { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.pay-est .billing { max-width: none; }
+input.readonly, input[readonly] { background: var(--hover); color: var(--text); cursor: default; }
+.code-tag { display: inline-block; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; }
 .part-sum { display: grid; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
 .table tr:last-child td { border-bottom: 0; }
 .table th.num { text-align: right; }

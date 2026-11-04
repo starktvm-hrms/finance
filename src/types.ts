@@ -16,7 +16,9 @@ export interface Settings {
   paymentTermsDays: number;
   jobPrefix: string;
   nextJobNumber: number;
-  jobNumberStyle?: "client" | "prefix"; // client: HLL26100417 (default); prefix: JOB-0001
+  // Job number layout (see lib/jobno.ts): code-serial-date HLL0417041126 (default),
+  // code-date-serial HLL0411260417, client HLL26110417, prefix JOB-0001
+  jobNumberStyle?: "code-serial-date" | "code-date-serial" | "client" | "prefix";
   departmentHeads: string[]; // people who can approve new jobs
   logo: string; // uploaded data-URL logo ("" = the logo shipped with the app)
   logoIncludesName?: boolean; // uploaded logo already shows the agency name (default true)
@@ -69,7 +71,7 @@ export interface Client {
   address: string;
   taxId: string;
   pan?: string;
-  code?: string; // short code used in job numbers (HLL, DT); worked out from the name when blank
+  code?: string; // 2-4 letters used in job numbers (HLL, DT), set by an admin; suggested from the name when blank
   products?: ClientProduct[]; // brands/products the agency works on for this client
   notes: string;
   createdAt: string;
