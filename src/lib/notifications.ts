@@ -1,6 +1,7 @@
 import type { AppData, Project } from "../types";
 import type { Access } from "./access";
 import { isMine } from "./scope";
+import { openInvoiceRequests } from "./workflow";
 
 export interface Notice {
   id: string; // stable: the same event always has the same id
@@ -60,6 +61,27 @@ export function notifications(data: AppData, access: Access, user: string | null
           jobId: p.id,
           needsAction: false,
         });
+      }
+    }
+  }
+  // Finance: jobs forwarded with their documents (until estimated), and invoice requests (until raised).
+  const finance = access.admin || access.areas.includes("invoices");
+  for (const p of data.projects) {
+    const client = data.clients.find((c) => c.id === p.clientId)?.name;
+    const body = [jobLabel(p), client].filter(Boolean).join(" — ");
+    if (finance && p.financeForward && !data.estimates.some((e) => e.projectId === p.id && e.status !== "rejected")) {
+      out.push({ id: `fwd:${p.id}:${p.financeForward.at}`, at: p.financeForward.at, title: `${p.financeForward.by} forwarded a job to Finance`, body, jobId: p.id, needsAction: !access.admin });
+    }
+    const open = new Set(openInvoiceRequests(data, p).map((r) => r.id));
+    for (const r of p.invoiceRequests ?? []) {
+      if (finance && open.has(r.id)) {
+        out.push({ id: `invreq:${r.id}`, at: r.at, title: `${r.by} requested ${r.kind === "part" ? "a part" : "the"} invoice`, body: [body, r.note].filter(Boolean).join(" · "), jobId: p.id, needsAction: !access.admin });
+      } else if (!open.has(r.id) && r.byUser && r.byUser === user && Date.now() - Date.parse(r.at) < 30 * 864e5) {
+        // The AE hears back when Finance has raised it (recorded on the request by the server).
+        const inv = data.invoices.filter((i) => i.projectId === p.id && i.createdAt >= r.at).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+        const at = r.doneAt || inv?.createdAt;
+        const number = r.invoiceNumber || inv?.number;
+        if (at) out.push({ id: `invdone:${r.id}`, at, title: `Finance raised invoice ${number ?? ""}`.trim(), body, jobId: p.id, needsAction: false });
       }
     }
   }

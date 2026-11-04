@@ -246,6 +246,14 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .pay-est .billing { max-width: none; }
 input.readonly, input[readonly] { background: var(--hover); color: var(--text); cursor: default; }
 .me-extra { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.doc-check { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.doc-check li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-radius: 8px; background: var(--hover); }
+.doc-check li.ok { background: color-mix(in srgb, var(--good) 10%, transparent); }
+.doc-mark { width: 18px; text-align: center; font-weight: 700; color: var(--muted); }
+.doc-check li.ok .doc-mark { color: var(--good); }
+.doc-kind { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 5px; font-size: 11px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+.doc-type { margin-right: 8px; }
+.stage-line { color: var(--muted); margin-top: 3px; }
 .code-tag { display: inline-block; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; }
 .part-sum { display: grid; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
 .table tr:last-child td { border-bottom: 0; }

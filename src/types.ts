@@ -40,6 +40,7 @@ export interface Settings {
   estimateTerms: string; // one per line; {days} = validity, {agency} = agency name
   invoiceTerms?: string; // one per line; {days} = payment terms, {agency} = agency name
   signatureLabels: string; // comma-separated, printed above the signature lines
+  requiredDocs?: string; // one per line: documents an AE must upload before forwarding a job to Finance
   sacCode?: string; // printed under each invoice line as "SAC:998364" when set
   invoiceSignatureLabels?: string; // same, on invoices (default: Authorized Signatory, AE, AS, ME)
   codesFilled?: boolean; // client and branch codes were filled in once (see seed.ts codesPatch)
@@ -155,6 +156,18 @@ export interface JobApproval {
   decidedAt?: string;
 }
 
+/** The AE asking Finance to raise an invoice for a job; open until an invoice is raised after it. */
+export interface InvoiceRequest {
+  id: ID;
+  kind: "full" | "part";
+  note: string;
+  by: string; // name
+  byUser?: string; // login
+  at: string; // ISO time
+  doneAt?: string; // set by the server when Finance raises an invoice for the job
+  invoiceNumber?: string;
+}
+
 /** A job handed to another department (e.g. Finance, to estimate it). */
 export interface JobForward {
   departmentId: ID;
@@ -175,6 +188,8 @@ export interface Project {
   approval?: JobApproval;
   departmentId?: ID; // department the job belongs to (default: its creator's)
   forwards?: JobForward[];
+  financeForward?: { by: string; at: string; docs: string[] }; // AE sent the job to Finance (with the required documents)
+  invoiceRequests?: InvoiceRequest[]; // AE asked Finance to raise an invoice (work done)
   createdBy?: string; // login that created it (blank on records made before tracking)
   createdById?: ID; // employee linked to that login
   name: string;
@@ -338,6 +353,7 @@ export interface Message {
 export interface Attachment {
   id: ID;
   projectId: ID;
+  kind?: string; // document type, e.g. "Work order (WO)", "Client approval email"
   name: string;
   size: number;
   type: string;
