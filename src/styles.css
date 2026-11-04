@@ -140,7 +140,7 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .profile-item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: var(--text); font: inherit; }
 .profile-item:hover, .profile-item:focus-visible { background: var(--hover); }
 .profile-item.danger { color: var(--bad); }
-.page { padding: 28px 32px 48px; max-width: 1200px; display: flex; flex-direction: column; gap: 16px; }
+.page { padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 16px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .page-head > .row { flex-wrap: wrap; max-width: 100%; }
 .page-head > .row > input { flex: 1 1 140px; min-width: 0; }
@@ -195,7 +195,36 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 /* Tables */
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table th { padding-left: 12px; padding-right: 12px; }
+.job-cell { min-width: 170px; }
+.bar-track.mini { height: 5px; margin: 5px 0 2px auto; width: 80px; }
+.row-icon { font-size: 16px; padding: 4px 6px; }
+.row-icon.danger { color: var(--bad); }
+.jobs-table td.actions { white-space: nowrap; width: 1%; }
+.estimates-table td.actions { white-space: normal; min-width: 96px; }
+.estimates-table td.actions .btn { padding: 4px 8px; }
+/* Fit wide tables without sideways scrolling: let labels wrap instead */
+.jobs-table td .btn, .estimates-table td .btn { white-space: normal; text-align: left; }
+.jobs-table th, .estimates-table th { white-space: normal; }
+@media screen and (max-width: 1500px) {
+  .page { padding-left: 24px; padding-right: 24px; }
+  .jobs-table td, .jobs-table th, .estimates-table td, .estimates-table th { padding-left: 8px; padding-right: 8px; }
+  .job-cell { min-width: 150px; }
+}
+.job-no { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-bottom: 2px; }
+.jobs-table .approval { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
+.jobs-table .approval .btn { padding: 2px 6px; }
+.billing { margin-top: 6px; min-width: 130px; max-width: 220px; }
+.billing .bar-track { height: 6px; }
+.inv-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip { border: 1px solid var(--border); background: var(--surface); color: var(--primary); border-radius: 99px; padding: 1px 8px; font-size: 11px; cursor: pointer; font: inherit; font-size: 11px; }
+.chip:hover { background: var(--hover); }
+.chip.paid { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, var(--border)); }
+.chip.cancelled { color: var(--muted); text-decoration: line-through; }
+.billing-box { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.billing-box .billing { max-width: 360px; }
+.part-sum { display: grid; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
 .table tr:last-child td { border-bottom: 0; }
 .table th.num { text-align: right; }
 .clickable { cursor: pointer; }
@@ -273,7 +302,6 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .estimate-totals .grid-2-tight { margin-top: 0; }
 .grand-input { font-weight: 650; font-size: 16px; }
 .form-actions.start { justify-content: flex-start; }
-.jobs-table td:nth-child(2) { min-width: 240px; }
 .jobs-table td .badge, .jobs-table td .btn.ghost { white-space: nowrap; }
 .jobs-table .approval { min-width: 150px; }
 .approval { display: flex; align-items: center; gap: 2px; margin-top: 4px; flex-wrap: wrap; }
@@ -511,7 +539,7 @@ input.num { text-align: right; }
 }
 
 /* Job details */
-.job-page { max-width: 1400px; }
+.job-page { max-width: none; }
 .back-title { display: flex; align-items: center; gap: 4px; margin: 0; }
 .back-btn { font-size: 30px; padding: 0 8px 4px; color: var(--text); }
 .job-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr) minmax(220px, 1fr); gap: 16px; align-items: start; }

@@ -8,8 +8,9 @@ import ProductionEstimate from "../components/ProductionEstimate";
 import SheetForm from "../components/SheetForm";
 import { estimateType, jobCategory, typeInfo } from "../lib/doctype";
 import { listFilter } from "../lib/scope";
+import { estimateBilling } from "../lib/billing";
 import { ScopeChip } from "../components/ScopeChip";
-import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
+import { Badge, Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
 // The editor (Quill) is only downloaded when an estimate form is opened.
 
@@ -163,20 +164,34 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
     }
   };
 
-  /** Turn an approved estimate into a draft invoice and open it. */
-  const createInvoice = (e: Estimate) => {
+  /**
+   * Raise an invoice from an approved estimate and open it:
+   * - "full": every line of the estimate (nothing invoiced yet);
+   * - "balance": whatever is left after part invoices;
+   * - a part: one line for the amount (pre-tax) given.
+   * Any number of part invoices can be raised before the balance.
+   */
+  const createInvoice = (e: Estimate, how: "full" | { amount: number; text: string }) => {
+    const b = estimateBilling(data, e);
     const issue = today();
+    const part = how !== "full";
+    const balance = !part && b.started;
+    const amount = part ? how.amount : b.remaining;
+    const lineText = part ? how.text : `Balance payment against Estimate No. ${e.number}${e.title ? ` — ${e.title}` : ""}`;
     const inv: Invoice = {
       id: uid(),
       number: `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}`,
       clientId: e.clientId,
       projectId: e.projectId,
+      estimateId: e.id,
+      billing: part ? "part" : balance ? "balance" : "full",
       issueDate: issue,
       dueDate: addDays(issue, s.paymentTermsDays),
       status: "draft",
-      items: e.items.map((it) => ({ ...it, id: uid() })),
+      items: part || balance ? [{ id: uid(), description: lineText, quantity: 1, rate: amount }] : e.items.map((it) => ({ ...it, id: uid() })),
       taxRate: e.taxRate,
-      discount: e.discount,
+      discount: part || balance ? 0 : e.discount,
+      discountPct: part || balance ? undefined : e.discountPct,
       notes: e.notes,
       country: e.country,
       roundOff: e.roundOff,
@@ -187,14 +202,35 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       clientAddress: e.clientAddress,
       header: e.header,
       remarks: e.remarks,
-      discountPct: e.discountPct,
       paidDate: "",
       createdAt: new Date().toISOString(),
     };
     upsert("invoices", inv);
     updateSettings({ nextInvoiceNumber: s.nextInvoiceNumber + 1 });
-    upsert("estimates", { ...e, status: "invoiced", invoiceId: inv.id });
+    const fullyBilled = !part || amount >= b.remaining - 0.009;
+    upsert("estimates", { ...e, status: fullyBilled ? "invoiced" : "approved", invoiceId: inv.id });
     go("invoices", { open: inv.id });
+  };
+  const [partOf, setPartOf] = useState<Estimate | null>(null);
+
+  /** Billed so far, with links to each invoice (shown under the status). */
+  const billingLine = (e: Estimate) => {
+    const b = estimateBilling(data, e);
+    if (!b.invoices.length) return null;
+    const fmt = docFormat(e.country, s);
+    return (
+      <div className="billing" onClick={(ev) => ev.stopPropagation()}>
+        <div className="bar-track" title={`${money(b.billed, fmt)} of ${money(b.total, fmt)} invoiced (before tax)`}><div className="bar-fill" style={{ width: `${b.pct}%` }} /></div>
+        <div className="small muted">{b.pct}% invoiced{b.remaining > 0 && ` · ${money(b.remaining, fmt)} left`}</div>
+        <div className="inv-chips">
+          {b.invoices.map((i) => (
+            <button key={i.id} className={`chip ${i.status === "paid" ? "paid" : i.status === "cancelled" ? "cancelled" : ""}`} title={`${i.billing === "part" ? "Part" : i.billing === "balance" ? "Balance" : "Full"} invoice · ${i.status}`} onClick={() => go("invoices", { open: i.id })}>
+              {i.number}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const actions = (e: Estimate) => (
@@ -206,7 +242,14 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
           <button className="btn ghost danger" onClick={() => decide(e, "rejected")}>Reject</button>
         </>
       )}
-      {e.status === "approved" && can("invoices") && <button className="btn ghost good" onClick={() => createInvoice(e)}>Create invoice</button>}
+      {e.status === "approved" && can("invoices") && (
+        <>
+          <button className="btn ghost good" onClick={() => setPartOf(e)} title="Invoice part of this estimate (any number of times)">Part invoice</button>
+          <button className="btn ghost good" onClick={() => createInvoice(e, "full")} title={estimateBilling(data, e).started ? "Invoice what is left after the part invoices" : "Invoice the whole estimate"}>
+            {estimateBilling(data, e).started ? "Balance invoice" : "Full invoice"}
+          </button>
+        </>
+      )}
     </>
   );
 
@@ -259,7 +302,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
         {rows.length === 0 ? (
           <Empty>{!data.clients.length ? "Add a client first, then create estimates." : typeTab === "all" ? "No estimates here." : `No ${tabInfo.label.toLowerCase()} estimates${filter === "all" ? "" : " with this status"}.`}</Empty>
         ) : (
-          <table className="table">
+          <table className="table estimates-table">
             <thead>
               <tr><th>Number</th>{typeTab === "all" && <th>Type</th>}<th>Client / job</th><th>Issued</th><th>Valid until</th><th>Status</th><th className="num">Total</th><th /></tr>
             </thead>
@@ -273,7 +316,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
                     <td>{clientName(e.clientId)}{e.projectId && <div className="muted small">{jobName(e.projectId)}</div>}</td>
                     <td className="nowrap">{fmtDate(e.issueDate, s.locale)}</td>
                     <td className={`nowrap ${st === "expired" ? "warn" : ""}`}>{fmtDate(e.validUntil, s.locale)}</td>
-                    <td><Badge tone={ESTIMATE_STATUS[st].tone}>{ESTIMATE_STATUS[st].label}</Badge></td>
+                    <td><Badge tone={ESTIMATE_STATUS[st].tone}>{ESTIMATE_STATUS[st].label}</Badge>{billingLine(e)}</td>
                     <td className="num">{money(invoiceTotals(e).total, docFormat(e.country, s))}</td>
                     <td className="actions" onClick={(ev) => ev.stopPropagation()}>
                       {actions(e)}
@@ -291,6 +334,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
       {view && (
         <Modal title={`${typeInfo(estimateType(view))?.label} estimate ${view.number}`} onClose={() => setView(null)} wide>
           {estimateType(view) === "media" ? <MediaEstimate est={view} /> : <ProductionEstimate est={view} />}
+          {estimateBilling(data, view).invoices.length > 0 && <div className="no-print billing-box"><strong className="small">Invoices raised</strong>{billingLine(view)}</div>}
           <div className="form-actions no-print">
             <button
               className="btn ghost danger"
@@ -304,7 +348,7 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
               Delete
             </button>
             <div className="spacer" />
-            {view.status === "invoiced" && view.invoiceId && (
+            {view.status === "invoiced" && view.invoiceId && estimateBilling(data, view).invoices.length <= 1 && (
               <button className="btn" onClick={() => go("invoices", { open: view.invoiceId })}>View invoice</button>
             )}
             <button className="btn" onClick={() => startEdit(view)}>Edit</button>
@@ -315,7 +359,56 @@ export default function Estimates({ params }: { params: URLSearchParams }) {
           </div>
         </Modal>
       )}
+      {partOf && <PartInvoice est={partOf} onCancel={() => setPartOf(null)} onCreate={(amount, text) => { const e = partOf; setPartOf(null); createInvoice(e, { amount, text }); }} />}
     </div>
   );
 }
 
+
+/** Ask how much of the estimate to invoice now (a percentage or an amount, before tax). */
+function PartInvoice({ est, onCancel, onCreate }: { est: Estimate; onCancel: () => void; onCreate: (amount: number, text: string) => void }) {
+  const { data } = useStore();
+  const b = estimateBilling(data, est);
+  const fmt = docFormat(est.country, data.settings);
+  const n = b.invoices.filter((i) => i.billing === "part" && i.status !== "cancelled").length + 1;
+  const [mode, setMode] = useState<"pct" | "amount">("pct");
+  const [value, setValue] = useState(b.started ? "" : "50");
+  const v = Number(value) || 0;
+  const amount = Math.round((mode === "pct" ? (b.total * v) / 100 : v) * 100) / 100;
+  const pctOfTotal = b.total ? Math.round((amount / b.total) * 1000) / 10 : 0;
+  const defaultText = `Part payment ${n} (${pctOfTotal}%) against Estimate No. ${est.number}${est.title ? ` — ${est.title}` : ""}`;
+  const [text, setText] = useState("");
+  const tax = (amount * (Number(est.taxRate) || 0)) / 100;
+  const tooMuch = amount > b.remaining + 0.009;
+  return (
+    <Modal title={`Part invoice for ${est.number}`} onClose={onCancel}>
+      <form className="form" onSubmit={(e) => { e.preventDefault(); if (amount > 0 && !tooMuch) onCreate(amount, text.trim() || defaultText); }}>
+        <div className="span2 part-sum small">
+          <div className="row between"><span className="muted">Estimate (before tax)</span><span>{money(b.total, fmt)}</span></div>
+          <div className="row between"><span className="muted">Invoiced so far</span><span>{money(b.billed, fmt)} ({b.pct}%)</span></div>
+          <div className="row between"><strong>Left to invoice</strong><strong>{money(b.remaining, fmt)}</strong></div>
+        </div>
+        <Field label="Invoice">
+          <select value={mode} onChange={(e) => { setMode(e.target.value as "pct" | "amount"); setValue(""); }}>
+            <option value="pct">A percentage of the estimate</option>
+            <option value="amount">An amount</option>
+          </select>
+        </Field>
+        <Field label={mode === "pct" ? "Percentage (%)" : `Amount before tax (${fmt.currency})`}>
+          <input type="number" min={0} step="0.01" required autoFocus value={value} onChange={(e) => setValue(e.target.value)} />
+        </Field>
+        <Field label="Line on the invoice" span={2}>
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={defaultText} />
+        </Field>
+        <div className="span2 part-sum small">
+          <div className="row between"><span className="muted">This invoice</span><span>{money(amount, fmt)} + {money(tax, fmt)} tax = <strong>{money(amount + tax, fmt)}</strong></span></div>
+          {tooMuch && <div className="bad">That's more than is left to invoice ({money(b.remaining, fmt)}).</div>}
+        </div>
+        <div className="form-actions span2">
+          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+          <button className="btn primary" disabled={!(amount > 0) || tooMuch}>Create part invoice</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

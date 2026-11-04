@@ -1,5 +1,6 @@
 import type { AppData, Invoice } from "../types";
 import { invoiceDisplayStatus, invoiceTotals, lastNMonths, monthKey, today } from "./util";
+import { estimateBilling } from "./billing";
 
 /** Net (pre-tax) revenue of an invoice: subtotal minus discount. */
 export const netRevenue = (inv: Invoice) => {
@@ -83,7 +84,8 @@ export function workflowQueues(data: AppData) {
     approvalValue: sum(estimatesForApproval),
     mediaForApproval,
     mediaApprovalValue: sum(mediaForApproval),
-    toRaiseValue: sum(invoiceToRaise),
+    // What is still to invoice (after any part invoices), with tax.
+    toRaiseValue: invoiceToRaise.reduce((t, e) => t + estimateBilling(data, e).remaining * (1 + (Number(e.taxRate) || 0) / 100), 0),
     toCollectValue: sum(invoiceToCollect),
   };
 }
