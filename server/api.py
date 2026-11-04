@@ -767,6 +767,13 @@ class Handler(BaseHTTPRequestHandler):
                         if any(m.get("id") == o["item"].get("id") for m in (d or {}).get("messages", [])):
                             raise Forbidden("Messages can't be edited.")
                         o = {**o, "item": {**o["item"], "createdBy": user}}
+                    if not acc["admin"] and o.get("op") == "upsert" and o.get("col") == "clients" and isinstance(o.get("item"), dict):
+                        # Client codes (they start job numbers) are set by an admin only.
+                        old = next((c for c in (d or {}).get("clients", []) if c.get("id") == o["item"].get("id")), None)
+                        item = {k: v for k, v in o["item"].items() if k != "code"}
+                        if old and old.get("code"):
+                            item["code"] = old["code"]
+                        o = {**o, "item": item}
                     d = apply_op(d, o)
                     d = start_approved_job(d, o)
                 state["data"], state["rev"] = d, state["rev"] + 1

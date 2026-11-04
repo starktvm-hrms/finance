@@ -4,7 +4,7 @@ import { useStore } from "../lib/store";
 import { netRevenue } from "../lib/metrics";
 import { invoiceTotals, money, uid } from "../lib/util";
 import { Empty, Field, Modal, PageHeader, confirmDelete } from "../components/ui";
-import { clientCode } from "../lib/jobno";
+import { CODE_RE, clientCode, suggestCode } from "../lib/jobno";
 
 const blank = (): Client => ({ id: uid(), name: "", contactName: "", email: "", phone: "", address: "", taxId: "", notes: "", createdAt: new Date().toISOString() });
 
@@ -12,6 +12,17 @@ export default function Clients() {
   const { data, upsert, remove, can, access } = useStore();
   const seeMoney = can("invoices");
   const [edit, setEdit] = useState<Client | null>(null);
+  const [codeTyped, setCodeTyped] = useState(false);
+  const [codeError, setCodeError] = useState("");
+  const openForm = (c: Client) => { setEdit(c); setCodeTyped(!!c.code); setCodeError(""); };
+  /** Problem with the admin's code, or "" when it is fine. */
+  const checkCode = (c: Client) => {
+    const code = (c.code ?? "").trim();
+    if (!code) return "Enter a client code: 2 to 4 letters.";
+    if (!CODE_RE.test(code)) return "The code must be 2 to 4 letters (A–Z), e.g. HLL or DT.";
+    const clash = data.clients.find((o) => o.id !== c.id && clientCode(o) === code);
+    return clash ? `${code} is already the code of ${clash.name}.` : "";
+  };
   const [q, setQ] = useState("");
   const s = data.settings;
 
@@ -42,7 +53,7 @@ export default function Clients() {
         actions={
           <>
             <input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
-            <button className="btn primary" onClick={() => setEdit(blank())}>+ New client</button>
+            <button className="btn primary" onClick={() => openForm(blank())}>+ New client</button>
           </>
         }
       />
@@ -52,11 +63,12 @@ export default function Clients() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Client</th><th>Contact</th><th className="num">Jobs</th>{seeMoney && <><th className="num">Revenue</th><th className="num">Outstanding</th></>}<th /></tr>
+              <tr><th>Code</th><th>Client</th><th>Contact</th><th className="num">Jobs</th>{seeMoney && <><th className="num">Revenue</th><th className="num">Outstanding</th></>}<th /></tr>
             </thead>
             <tbody>
               {rows.map(({ c, projects, billed, due }) => (
-                <tr key={c.id} className="clickable" onClick={() => setEdit(c)}>
+                <tr key={c.id} className="clickable" onClick={() => openForm(c)}>
+                  <td>{c.code ? <span className="code-tag">{c.code}</span> : <span className="muted small" title="Not set yet: job numbers use this suggested code until an admin sets one">{clientCode(c)} (auto)</span>}</td>
                   <td><strong>{c.name}</strong></td>
                   <td>{c.contactName}<div className="muted small">{c.email}</div></td>
                   <td className="num">{projects}</td>
@@ -80,18 +92,36 @@ export default function Clients() {
             className="form"
             onSubmit={(e) => {
               e.preventDefault();
+              if (access.admin) {
+                const err = checkCode(edit);
+                if (err) return setCodeError(err);
+              }
               upsert("clients", edit);
               setEdit(null);
             }}
           >
-            <Field label="Company / client name" span={2}><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+            <Field label="Company / client name" span={2}><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value, ...(access.admin && !codeTyped && { code: e.target.value.trim() ? suggestCode(e.target.value) : "" }) })} /></Field>
             <Field label="Contact person"><input value={edit.contactName} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></Field>
             <Field label="Email"><input type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="Phone"><input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
             <Field label="Tax ID / GSTIN"><input value={edit.taxId} onChange={(e) => setEdit({ ...edit, taxId: e.target.value })} /></Field>
             <Field label="PAN"><input value={edit.pan ?? ""} onChange={(e) => setEdit({ ...edit, pan: e.target.value.toUpperCase() })} maxLength={10} /></Field>
-            <Field label="Code (used in job numbers)">
-              <input value={edit.code ?? ""} maxLength={6} onChange={(e) => setEdit({ ...edit, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} placeholder={`${clientCode({ name: edit.name })} (automatic)`} />
+            <Field label="Client code (2–4 letters, starts every job number)">
+              {access.admin ? (
+                <>
+                  <input
+                    required
+                    value={edit.code ?? ""}
+                    maxLength={4}
+                    pattern="[A-Za-z]{2,4}"
+                    onChange={(e) => { setCodeTyped(true); setCodeError(""); setEdit({ ...edit, code: e.target.value.toUpperCase().replace(/[^A-Z]/g, "") }); }}
+                    placeholder={suggestCode(edit.name)}
+                  />
+                  {codeError && <span className="bad small">{codeError}</span>}
+                </>
+              ) : (
+                <input readOnly value={edit.code ? edit.code : `${clientCode(edit)} (until an admin sets it)`} title="Only an admin can set the client code" />
+              )}
             </Field>
             <Field label="Billing address" span={2}><textarea rows={2} value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field>
             <Field label="Products (one per line — Product: sub-product, sub-product)" span={2}>

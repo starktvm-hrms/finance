@@ -9,6 +9,8 @@ import { invoiceTotals, money, today, uid } from "../lib/util";
 import { RichTextView, isEmpty } from "../components/SafeHtml";
 import { Badge, Empty } from "../components/ui";
 import { PROJECT_STATUS } from "./Projects";
+import { BillingLine, PartInvoice, useCreateInvoice } from "../components/Billing";
+import { estimateBilling } from "../lib/billing";
 
 // The rich-text editor (Quill) is only downloaded when a job is opened.
 const LazyEditor = lazy(() => import("../components/RichText"));
@@ -25,6 +27,8 @@ export default function JobDetails({ id }: { id: string }) {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState("");
+  const [partOf, setPartOf] = useState<Estimate | null>(null);
+  const createInvoice = useCreateInvoice();
   const [error, setError] = useState("");
   const financeDept = data.departments.find((d) => /finance/i.test(d.name));
   const [forwardTo, setForwardTo] = useState(financeDept?.id ?? "");
@@ -91,8 +95,17 @@ export default function JobDetails({ id }: { id: string }) {
         {can("estimates") && <button className="btn good-fill" onClick={() => clientApproved(est)}>Client Approved</button>}
         {createBtn}
       </> };
-    if (est.status === "approved")
-      return { title: `Estimate ${est.number} approved: raise the invoice`, actions: can("invoices") && can("estimates") && <button className="btn primary" onClick={() => go("estimates", { open: est.id })}>Raise invoice</button> };
+    if (est.status === "approved") {
+      const started = estimateBilling(data, est).started;
+      return {
+        title: started ? `Estimate ${est.number} is part invoiced: raise another part or the balance` : `Estimate ${est.number} approved: raise the invoice`,
+        actions: can("invoices") && can("estimates") && <>
+          <button className="btn primary" onClick={() => setPartOf(est)}>Part invoice</button>
+          <button className="btn good-fill" onClick={() => createInvoice(est, "full")}>{started ? "Balance invoice" : "Full invoice"}</button>
+        </>,
+        billing: est,
+      };
+    }
     if (invoice && invoice.status === "draft")
       return { title: `Invoice ${invoice.number} is a draft: send it to the client`, actions: can("invoices") && <button className="btn primary" onClick={() => go("invoices", { open: invoice.id })}>Open invoice</button> };
     if (invoice && invoice.status === "sent")
@@ -186,6 +199,7 @@ export default function JobDetails({ id }: { id: string }) {
               <div className="tl-body">
                 <strong>{next.title}</strong>
                 {next.actions && <div className="row gap wrap tl-actions">{next.actions}</div>}
+                {"billing" in next && next.billing && <BillingLine est={next.billing} />}
                 {canForward && (
                   <div className="row gap wrap tl-actions">
                     <select aria-label="Forward to department" value={forwardTo} onChange={(e) => setForwardTo(e.target.value)}>
@@ -227,6 +241,9 @@ export default function JobDetails({ id }: { id: string }) {
               {billed > 0 && <div className="row between"><span className="muted">Balance</span><span className={billed - received > 0 ? "warn" : "good"}>{money(Math.max(0, billed - received), s)}</span></div>}
               {est && <div className="row between"><span className="muted">Estimate {est.number}</span><span>{money(invoiceTotals(est).total, s)}</span></div>}
             </div>
+            {estimates.filter((e) => estimateBilling(data, e).invoices.length > 0).map((e) => (
+              <div key={e.id} className="pay-est small"><span className="muted">Invoices for {e.number}</span><BillingLine est={e} /></div>
+            ))}
             {payments.length > 0 && (
               <ul className="pay-list">
                 {payments.map((p) => (
@@ -291,6 +308,7 @@ export default function JobDetails({ id }: { id: string }) {
           )}
         </section>
       </div>
+      {partOf && <PartInvoice est={partOf} onCancel={() => setPartOf(null)} onCreate={(amount, text) => { const e = partOf; setPartOf(null); createInvoice(e, { amount, text }); }} />}
     </div>
   );
 }

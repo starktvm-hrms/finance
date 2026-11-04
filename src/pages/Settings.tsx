@@ -8,6 +8,7 @@ import { emptyData, sampleData } from "../lib/seed";
 import { readBrowserData } from "../lib/adapter";
 import { downloadFile, today } from "../lib/util";
 import { Field, PageHeader } from "../components/ui";
+import { JOB_NUMBER_STYLES, makeJobNumber, type JobNumberStyle } from "../lib/jobno";
 
 const CURRENCIES = [
   ["INR", "en-IN"], ["USD", "en-US"], ["EUR", "de-DE"], ["GBP", "en-GB"], ["AED", "en-AE"], ["AUD", "en-AU"], ["CAD", "en-CA"], ["SGD", "en-SG"],
@@ -150,14 +151,15 @@ export default function SettingsPage() {
           <Field label="Media estimate prefix"><input value={s.mediaEstimatePrefix} onChange={(e) => updateSettings({ mediaEstimatePrefix: e.target.value })} /></Field>
           <Field label={`Next estimate number (e.g. ${s.productionEstimatePrefix}/26-27/${s.nextEstimateNumber})`}><input type="number" min={1} value={s.nextEstimateNumber} onChange={(e) => updateSettings({ nextEstimateNumber: Number(e.target.value) })} /></Field>
           <Field label="Estimates valid for (days)"><input type="number" min={1} value={s.estimateValidDays} onChange={(e) => updateSettings({ estimateValidDays: Number(e.target.value) })} /></Field>
-          <Field label="Job number style">
-            <select value={s.jobNumberStyle ?? "client"} onChange={(e) => updateSettings({ jobNumberStyle: e.target.value as "client" | "prefix" })}>
-              <option value="client">Client code + year + month + number (e.g. HLL26100417)</option>
-              <option value="prefix">Prefix + number (e.g. JOB-0001)</option>
+          <Field label="Job number layout (numbers are generated automatically)">
+            <select value={s.jobNumberStyle ?? "code-serial-date"} onChange={(e) => updateSettings({ jobNumberStyle: e.target.value as JobNumberStyle })}>
+              {JOB_NUMBER_STYLES.map((o) => (
+                <option key={o.id} value={o.id}>{o.label} — e.g. {makeJobNumber({ jobNumberStyle: o.id, jobPrefix: s.jobPrefix }, { name: "HLL Lifecare", code: "HLL" }, today(), s.nextJobNumber)}</option>
+              ))}
             </select>
           </Field>
           {s.jobNumberStyle === "prefix" && <Field label="Job prefix"><input value={s.jobPrefix} onChange={(e) => updateSettings({ jobPrefix: e.target.value })} /></Field>}
-          <Field label="Next job number"><input type="number" min={1} value={s.nextJobNumber} onChange={(e) => updateSettings({ nextJobNumber: Number(e.target.value) })} /></Field>
+          <Field label="Next job serial number"><input type="number" min={1} value={s.nextJobNumber} onChange={(e) => updateSettings({ nextJobNumber: Number(e.target.value) })} /></Field>
           <Field label="Other job approvers (one per line). Department heads ticked in Employees are included automatically" span={2}>
             <textarea rows={3} defaultValue={s.departmentHeads.join("\n")} placeholder={"Priya (Creative)\nRahul (Media)"}
               onChange={(e) => updateSettings({ departmentHeads: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} />
