@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getAdapter } from "../lib/adapter";
 import { useStore } from "../lib/store";
 import { DEFAULT_LOGO } from "../lib/brand";
+import ThemeToggle from "../components/ThemeToggle";
 
 const FEATURES = [
   { title: "Jobs to invoices", text: "Open a job, send the estimate, get approval and raise the invoice." },
@@ -65,6 +66,7 @@ export default function Login() {
 
   return (
     <div className="login">
+      <ThemeToggle className="login-theme" />
       <section className="login-brand" aria-label={name}>
         <div className="login-brand-top">
           <span className="login-logo"><img src={brand.logo || DEFAULT_LOGO} alt={name} /></span>
