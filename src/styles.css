@@ -227,6 +227,7 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .pay-est { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .pay-est .billing { max-width: none; }
 input.readonly, input[readonly] { background: var(--hover); color: var(--text); cursor: default; }
+.me-extra { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
 .code-tag { display: inline-block; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; }
 .part-sum { display: grid; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
 .table tr:last-child td { border-bottom: 0; }
@@ -634,6 +635,51 @@ input.num { text-align: right; }
   .items-row > input:first-child { grid-column: 1 / -1; }
   .items-row > .num { grid-column: 1 / 3; text-align: left; }
   .filters > input { flex: 1; }
+}
+
+/* Tax invoice (A4 landscape, black and white; always paper white) */
+.inv-doc { background: #fff; color: #000; font-family: Verdana, "DejaVu Sans", Arial, sans-serif; font-size: 11px; line-height: 1.4; padding: 26px 34px 30px; border-radius: 6px; max-width: 1123px; margin: 0 auto; }
+.modal .inv-doc { box-shadow: 0 0 0 1px var(--border); }
+.modal.wide:has(.inv-doc) { max-width: 1180px; }
+.inv-doc * { color: #000 !important; border-color: #000; }
+.inv-doc .pe-letterhead { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #000; }
+.inv-doc .pe-brand img { filter: grayscale(1) contrast(1.2); }
+.inv-doc .pe-brand.full img { max-height: 40px; }
+.inv-doc .pe-address { margin-top: 10px; padding-left: 0; font-size: 10px; }
+.inv-title { text-align: center; font-size: 22px; letter-spacing: 0.04em; margin: 6px 0 12px; font-weight: 800; }
+.inv-meta { display: grid; grid-template-columns: 1.1fr 0.8fr 1.3fr; column-gap: 28px; row-gap: 4px; margin-bottom: 12px; }
+.inv-col { display: grid; grid-template-columns: 74px minmax(0, 1fr); row-gap: 6px; column-gap: 8px; margin: 0; align-content: start; }
+.inv-col dt { white-space: nowrap; }
+.inv-col dd { margin: 0; min-height: 1.4em; overflow-wrap: anywhere; }
+.inv-col .b { font-weight: 700; }
+.inv-dates { grid-template-columns: 50px minmax(0, 1fr); }
+.inv-blank { border-bottom: 1px dotted #000; max-width: 160px; }
+.inv-addr { font-weight: 700; white-space: pre-wrap; }
+.inv-product { grid-column: 1 / -1; grid-template-columns: 74px minmax(0, 1fr); }
+.inv-rich { margin: 6px 0; }
+.inv-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.inv-table th { text-align: left; font-weight: 700; padding: 6px 6px; border-top: 2px solid #000; border-bottom: 1.5px solid #000; white-space: nowrap; }
+.inv-table td { padding: 6px 6px; vertical-align: top; }
+.inv-table tbody tr:last-child td { padding-bottom: 40px; }
+.inv-table .sl { width: 56px; }
+.inv-table .amt, .inv-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inv-sub { padding-left: 6px; margin-top: 4px; }
+.inv-totals .pe-totals { border-top: 2px solid #000; border-bottom: 2px solid #000; margin-top: 0; }
+.inv-totals .pe-totals dl { row-gap: 7px; }
+.inv-sign { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; padding: 56px 0 0 110px; text-align: left; }
+.inv-eoe { margin-top: 44px; }
+.inv-page-2 { margin-top: 36px; padding-top: 24px; border-top: 1px dashed #999; }
+.inv-doc .pe-footer { border-top: 0; margin-top: 4px; border-bottom: 2px solid #000; font-size: 10px; }
+.inv-doc .pe-bank { justify-self: end; }
+@media screen and (max-width: 760px) {
+  .modal .inv-doc { padding: 14px; font-size: 10px; }
+  .inv-meta { grid-template-columns: 1fr; }
+  .inv-sign { grid-template-columns: 1fr 1fr; padding-left: 0; row-gap: 20px; }
+}
+@media print {
+  .inv-doc { padding: 0; max-width: none; border-radius: 0; box-shadow: none !important; }
+  .inv-page-2 { break-before: page; margin-top: 0; padding-top: 0; border-top: 0; }
+  .inv-sign, .inv-totals { break-inside: avoid; }
 }
 
 /* Print: only the invoice */

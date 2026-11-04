@@ -5,6 +5,7 @@ import {
 } from "../types";
 import { useStore } from "../lib/store";
 import { addDays, amountInWords, docFormat, financialYear, gstSplit, gstState, invoiceTotals, today } from "../lib/util";
+import { makeInvoiceNumber } from "../lib/invoiceno";
 import { estimateType, typeInfo } from "../lib/doctype";
 import { EstimateFooter, Letterhead, SignatureBlock, dmyDate, plainAmount, sheetLabels } from "./ProductionEstimate";
 import { AutoTextarea, Field } from "./ui";
@@ -44,7 +45,7 @@ export default function SheetForm({ kind, initial, isNew, onSave, onCancel }: { 
   const removeLine = (id: string) => set({ items: est.items.filter((x) => x.id !== id) });
   const previewNo =
     kind === "invoice"
-      ? `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}`
+      ? makeInvoiceNumber(data, est.issueDate || today(), "branchId" in est ? est.branchId : undefined)
       : `${isMedia ? s.mediaEstimatePrefix : s.productionEstimatePrefix}/${financialYear(est.issueDate || today())}/${s.nextEstimateNumber}`;
   const labels = sheetLabels(kind, isMedia);
   const noun = kind === "invoice" ? "Invoice" : "Estimate";
@@ -111,6 +112,16 @@ export default function SheetForm({ kind, initial, isNew, onSave, onCancel }: { 
                   title="Leave blank to get the next number in the series"
                 />
               </dd>
+              {kind === "invoice" && data.branches.length > 1 && (
+                <>
+                  <dt>Branch :</dt>
+                  <dd>
+                    <select aria-label="Branch" value={("branchId" in est && est.branchId) || ""} onChange={(e) => set({ branchId: e.target.value } as Patch)}>
+                      {data.branches.map((b) => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ""}</option>)}
+                    </select>
+                  </dd>
+                </>
+              )}
               <dt>Date :</dt>
               <dd>
                 <input required type="date" aria-label={`${noun} date`} value={est.issueDate}
@@ -185,6 +196,10 @@ export default function SheetForm({ kind, initial, isNew, onSave, onCancel }: { 
                   <tr>
                     <td />
                     <td colSpan={3}>
+                      <div className="me-extra">
+                        <input aria-label={`Line ${i + 1} beam or region`} value={it.region ?? ""} onChange={(e) => setItem(it.id, { region: e.target.value })} placeholder="Beam / region (TV, radio)" />
+                        <input aria-label={`Line ${i + 1} time band`} value={it.timeBand ?? ""} onChange={(e) => setItem(it.id, { timeBand: e.target.value })} placeholder="Time band, e.g. Prime Time" />
+                      </div>
                       <AutoTextarea
                         required
                         aria-label={`Line ${i + 1} description`}

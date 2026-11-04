@@ -3,6 +3,7 @@ import type { Estimate, Invoice } from "../types";
 import { useStore } from "../lib/store";
 import { go } from "../lib/route";
 import { estimateBilling } from "../lib/billing";
+import { defaultBranch, makeInvoiceNumber } from "../lib/invoiceno";
 import { addDays, docFormat, money, today, uid } from "../lib/util";
 import { Field, Modal } from "./ui";
 
@@ -14,7 +15,7 @@ import { Field, Modal } from "./ui";
  * Any number of part invoices can be raised before the balance.
  */
 export function useCreateInvoice() {
-  const { data, upsert, updateSettings } = useStore();
+  const { data, upsert, updateSettings, access } = useStore();
   const s = data.settings;
   return (e: Estimate, how: "full" | { amount: number; text: string }) => {
     const b = estimateBilling(data, e);
@@ -25,7 +26,8 @@ export function useCreateInvoice() {
     const lineText = part ? how.text : `Balance payment against Estimate No. ${e.number}${e.title ? ` — ${e.title}` : ""}`;
     const inv: Invoice = {
       id: uid(),
-      number: `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}`,
+      number: makeInvoiceNumber(data, issue, defaultBranch(data, access.employeeId)?.id),
+      branchId: defaultBranch(data, access.employeeId)?.id,
       clientId: e.clientId,
       projectId: e.projectId,
       estimateId: e.id,

@@ -3,7 +3,7 @@ import { DEFAULT_DEPARTMENTS, type AppData, type Branch, type Client, type Depar
 import { ForbiddenError, SignedOutError, getAdapter, readBrowserData, type Me } from "./adapter";
 import { FULL_ACCESS, type Access } from "./access";
 import { applyOp, type Collection, type Op } from "./ops";
-import { emptyData, letterheadPatch, sampleData, withDefaultDepartments } from "./seed";
+import { codesPatch, emptyData, letterheadPatch, sampleData, withDefaultDepartments } from "./seed";
 
 type ItemOf<C extends Collection> = C extends "clients"
   ? Client
@@ -202,6 +202,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const item = { id: crypto.randomUUID?.() ?? `${t0}-${name}`, name, description: "", createdAt: new Date(t0 + i).toISOString() };
               setData((x) => applyOp(x, { op: "upsert", col: "departments", item }));
               queue.current.push({ op: "upsert", col: "departments", item });
+            }
+            await flush();
+          }
+          // One-time: codes for clients and branches (job and invoice numbers start with them).
+          const codeOps = accessRef.current.admin ? codesPatch(d) : [];
+          if (codeOps.length) {
+            for (const op of codeOps) {
+              setData((x) => applyOp(x, op));
+              queue.current.push(op);
             }
             await flush();
           }

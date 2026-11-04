@@ -3,11 +3,11 @@ import { COUNTRIES, ESTIMATE_TYPES, type EstimateType, type Invoice, type Invoic
 import { useStore } from "../lib/store";
 import { clearParam, go } from "../lib/route";
 import { addDays, docFormat, downloadFile, fmtDate, invoiceDisplayStatus, invoiceTotals, money, toCSV, today, uid, type DisplayStatus } from "../lib/util";
+import InvoiceSheet from "../components/InvoiceSheet";
+import { defaultBranch, makeInvoiceNumber } from "../lib/invoiceno";
 import { estimateType, typeInfo } from "../lib/doctype";
 import { Badge, Empty, Modal, PageHeader, confirmDelete } from "../components/ui";
 import { newLine } from "../components/Doc";
-import ProductionEstimate from "../components/ProductionEstimate";
-import MediaEstimate from "../components/MediaEstimate";
 import SheetForm from "../components/SheetForm";
 
 const STATUS: Record<DisplayStatus, { label: string; tone: string }> = {
@@ -32,7 +32,7 @@ const STATUSES: { id: Filter; label: string; hint: string }[] = [
 const matches = (f: Filter, st: DisplayStatus) => f === "all" || f === st || (f === "unpaid" && (st === "sent" || st === "overdue"));
 
 export default function Invoices({ params }: { params: URLSearchParams }) {
-  const { data, upsert, remove, updateSettings, can } = useStore();
+  const { data, upsert, remove, updateSettings, can, access } = useStore();
   const s = data.settings;
   const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? "—";
   const jobName = (id: string) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -44,6 +44,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
     return {
       id: uid(),
       number: "", // given on save unless typed
+      branchId: defaultBranch(data, access.employeeId)?.id,
       clientId: "",
       projectId: "",
       issueDate: issue,
@@ -110,7 +111,9 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
     const clash = inv.number && data.invoices.find((x) => x.id !== inv.id && x.number.toLowerCase() === inv.number.toLowerCase());
     if (clash && !window.confirm(`Invoice No. ${inv.number} is already used by another invoice (${clientName(clash.clientId)}). Save anyway?`)) return;
     if (!inv.number) {
-      inv = { ...inv, number: `${s.invoicePrefix}${String(s.nextInvoiceNumber).padStart(4, "0")}` };
+      // Automatic: branch code / financial year / serial (e.g. tvpm/26-27/284).
+      const branchId = inv.branchId || defaultBranch(data, access.employeeId)?.id;
+      inv = { ...inv, branchId, number: makeInvoiceNumber(data, inv.issueDate, branchId) };
       updateSettings({ nextInvoiceNumber: s.nextInvoiceNumber + 1 });
     }
     upsert("invoices", inv);
@@ -206,7 +209,7 @@ export default function Invoices({ params }: { params: URLSearchParams }) {
 
       {view && (
         <Modal title={`Invoice ${view.number}`} onClose={() => setView(null)} wide>
-          {estimateType(view) === "media" ? <MediaEstimate est={view} kind="invoice" /> : <ProductionEstimate est={view} kind="invoice" />}
+          <InvoiceSheet inv={view} />
           {fromEstimate(view) && <p className="muted small no-print">{view.billing === "part" ? "Part invoice" : view.billing === "balance" ? "Balance invoice" : "Raised"} from estimate {fromEstimate(view)!.number}.</p>}
           <div className="form-actions no-print">
             <button

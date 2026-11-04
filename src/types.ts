@@ -40,6 +40,9 @@ export interface Settings {
   estimateTerms: string; // one per line; {days} = validity, {agency} = agency name
   invoiceTerms?: string; // one per line; {days} = payment terms, {agency} = agency name
   signatureLabels: string; // comma-separated, printed above the signature lines
+  sacCode?: string; // printed under each invoice line as "SAC:998364" when set
+  invoiceSignatureLabels?: string; // same, on invoices (default: Authorized Signatory, AE, AS, ME)
+  codesFilled?: boolean; // client and branch codes were filled in once (see seed.ts codesPatch)
   productionEstimatePrefix: string; // PE → PE/26-27/369
   mediaEstimatePrefix: string; // ME → ME/26-27/370
 }
@@ -115,6 +118,7 @@ export interface Department {
 export interface Branch {
   id: ID;
   name: string;
+  code?: string; // starts invoice numbers, e.g. tvpm → tvpm/26-27/284
   address: string;
   phone: string;
   createdAt: string;
@@ -191,6 +195,8 @@ export interface LineItem {
   rate: number;
   platform?: string; // media estimates: publication / channel / platform the line is booked with
   unit?: string; // media estimates: unit shown next to the quantity (e.g. 1, 10 sec, 25x4 cm)
+  region?: string; // media (TV/radio): beam / region, e.g. National
+  timeBand?: string; // media (TV/radio): time band, e.g. Prime Time
 }
 
 export interface Invoice {
@@ -209,6 +215,7 @@ export interface Invoice {
   country?: CountryCode;
   roundOff?: boolean;
   estimateId?: ID; // the estimate it bills (part or full)
+  branchId?: ID; // branch whose code starts the invoice number
   billing?: "full" | "part" | "balance"; // how much of that estimate it bills
   // Same printed fields as estimates (copied from the estimate it was raised from)
   type?: EstimateType;

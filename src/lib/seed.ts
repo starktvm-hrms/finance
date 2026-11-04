@@ -1,5 +1,8 @@
 import { DEFAULT_DEPARTMENTS, type AppData, type Settings } from "../types";
 import { addDays, uid } from "./util";
+import type { Op } from "./ops";
+import { suggestCode } from "./jobno";
+import { branchCode } from "./invoiceno";
 
 export const defaultSettings: Settings = {
   agencyName: "My Agency",
@@ -34,7 +37,7 @@ export const defaultSettings: Settings = {
     "This estimate is valid only for a period of {days} days\nPart payment/advance, if any, should be by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT",
   signatureLabels: "Authorized Signatory, AE, AS",
   invoiceTerms:
-    "Payment is due within {days} days of the invoice date\nPayment by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT\nPlease quote the invoice number with your payment",
+    "TDS should be deducted @2% on the bill amount (excluding GST) under section 194C of Income Tax Act,1961.\nPayment should be by crossed a/c payee cheque/demand draft in favour of {agency} payable at Thiruvananthapuram or by RTGS/NEFT",
   productionEstimatePrefix: "PE",
   mediaEstimatePrefix: "ME",
   paymentTermsDays: 15,
@@ -70,6 +73,39 @@ export function letterheadPatch(s: Settings): Partial<Settings> | null {
   return patch;
 }
 
+const OLD_INVOICE_TERMS =
+  "Payment is due within {days} days of the invoice date\nPayment by crossed a/c payee cheque/demand draft in favour of {agency} or by RTGS/NEFT\nPlease quote the invoice number with your payment";
+export const INVOICE_TERMS =
+  "TDS should be deducted @2% on the bill amount (excluding GST) under section 194C of Income Tax Act,1961.\nPayment should be by crossed a/c payee cheque/demand draft in favour of {agency} payable at Thiruvananthapuram or by RTGS/NEFT";
+
+/**
+ * One-time fill (run for an admin): a code for every client that has none
+ * (unique, from the name), a code for every branch (a Thiruvananthapuram
+ * branch "tvpm" if there are none), and the agency's invoice terms if the
+ * old default is still there. Returns the ops, or [] when already done.
+ */
+export function codesPatch(d: AppData): Op[] {
+  if (d.settings.codesFilled) return [];
+  const ops: Op[] = [];
+  const used = new Set(d.clients.map((c) => c.code?.trim().toUpperCase()).filter(Boolean) as string[]);
+  for (const c of d.clients) {
+    if (c.code?.trim()) continue;
+    let code = suggestCode(c.name);
+    for (let i = 0; used.has(code); i++) code = (suggestCode(c.name).slice(0, 3) + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i % 26]).slice(0, 4);
+    used.add(code);
+    ops.push({ op: "upsert", col: "clients", item: { ...c, code } });
+  }
+  if (!d.branches.length) {
+    ops.push({ op: "upsert", col: "branches", item: { id: uid(), name: "Thiruvananthapuram", code: "tvpm", address: d.settings.agencyAddress, phone: d.settings.agencyPhone, createdAt: new Date().toISOString() } });
+  } else {
+    for (const b of d.branches) if (!b.code?.trim()) ops.push({ op: "upsert", col: "branches", item: { ...b, code: /thiruvananthapuram|trivandrum/i.test(b.name) ? "tvpm" : branchCode(b) } });
+  }
+  const patch: Partial<Settings> = { codesFilled: true };
+  if (!d.settings.invoiceTerms?.trim() || d.settings.invoiceTerms === OLD_INVOICE_TERMS) patch.invoiceTerms = INVOICE_TERMS;
+  ops.push({ op: "settings", patch });
+  return ops;
+}
+
 export function withDefaultDepartments(d: AppData): AppData {
   const t0 = Date.now();
   return { ...d, departments: DEFAULT_DEPARTMENTS.map((name, i) => ({ id: uid(), name, description: "", createdAt: new Date(t0 + i).toISOString() })) };
@@ -91,9 +127,9 @@ export function sampleData(): AppData {
 
   const data = emptyData();
   data.clients = [
-    { id: c1, name: "Brightleaf Foods", contactName: "Anita Rao", email: "anita@brightleaf.example", phone: "", address: "Bengaluru", taxId: "", notes: "", createdAt: created },
-    { id: c2, name: "Northwind Realty", contactName: "Rahul Mehta", email: "rahul@northwind.example", phone: "", address: "Mumbai", taxId: "", notes: "", createdAt: created },
-    { id: c3, name: "Kite Fintech", contactName: "Sara Thomas", email: "sara@kite.example", phone: "", address: "Kochi", taxId: "", notes: "", createdAt: created },
+    { id: c1, code: "BF", name: "Brightleaf Foods", contactName: "Anita Rao", email: "anita@brightleaf.example", phone: "", address: "Bengaluru", taxId: "", notes: "", createdAt: created },
+    { id: c2, code: "NR", name: "Northwind Realty", contactName: "Rahul Mehta", email: "rahul@northwind.example", phone: "", address: "Mumbai", taxId: "", notes: "", createdAt: created },
+    { id: c3, code: "KF", name: "Kite Fintech", contactName: "Sara Thomas", email: "sara@kite.example", phone: "", address: "Kochi", taxId: "", notes: "", createdAt: created },
   ];
   const products: Record<string, AppData["clients"][number]["products"]> = {
     [c1]: [{ name: "Brightleaf Tea", subProducts: ["Green Tea", "Masala Chai"] }, { name: "Brightleaf Snacks", subProducts: ["Millet Bars"] }],
