@@ -31,6 +31,17 @@ export function jobTimeline(data: AppData, job: Project): TimelineEvent[] {
     const dept = data.departments.find((d) => d.id === f.departmentId)?.name ?? "another";
     ev.push({ at: f.at, text: `${f.by} forwarded this job to the ${dept} department` });
   }
+  for (const a of data.attachments.filter((x) => x.projectId === job.id && x.kind)) {
+    ev.push({ at: a.createdAt, text: `${who(a.createdBy, a.createdById)} uploaded the ${a.kind}`, note: a.name });
+  }
+  if (job.financeForward) {
+    ev.push({ at: job.financeForward.at, text: `${job.financeForward.by} forwarded this job to Finance`, note: job.financeForward.docs.length ? `With ${job.financeForward.docs.join(", ")}` : undefined });
+  }
+  for (const r of job.invoiceRequests ?? []) {
+    ev.push({ at: r.at, text: `${r.by} requested ${r.kind === "part" ? "a part" : "the"} invoice`, note: r.note || undefined });
+    // People without the Invoices tab don't see the invoice; show that Finance acted on the request.
+    if (r.doneAt && !data.invoices.some((i) => i.projectId === job.id)) ev.push({ at: r.doneAt, text: `Finance raised invoice ${r.invoiceNumber ?? ""}`.trim() });
+  }
   for (const e of data.estimates.filter((x) => x.projectId === job.id)) {
     ev.push({ at: e.createdAt, text: `${who(e.createdBy, e.createdById)} created estimate with Estimate No.: ${e.number}` });
     if (e.decidedDate && (e.status === "approved" || e.status === "invoiced" || e.status === "rejected")) {

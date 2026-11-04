@@ -20,7 +20,7 @@ SHA-256 is stored (sessions.json), so restarts don't sign anyone out.
     POST /password {current, new}
     GET  /data[?since=REV]   -> {"rev": n, "data": {...} | null}  or {"unchanged": true}
     POST /ops   {"ops":[...]} -> {"rev": n}
-    POST /files?job=ID&name=N&type=T  (raw file body) -> {"rev", "item"}
+    POST /files?job=ID&name=N&type=T[&kind=K]  (raw file body) -> {"rev", "item"}
     GET  /files/ID           -> the file (as a download)
     POST /files/delete {id}
     GET  /health             -> {"ok": true, "rev": n}
@@ -192,6 +192,23 @@ def start_approved_job(d, o):
     if not any(p.get("id") == item["projectId"] and p.get("status") == "lead" for p in projects):
         return d
     return {**d, "projects": [{**p, "status": "active"} if p.get("id") == item["projectId"] else p for p in projects]}
+
+
+def close_invoice_requests(d, o):
+    """An invoice raised for a job closes the AE's open invoice requests on it,
+    so the AE (who can't see invoices) sees that Finance has acted."""
+    item = o.get("item") if isinstance(o, dict) and o.get("op") == "upsert" and o.get("col") == "invoices" else None
+    if not isinstance(item, dict) or not item.get("projectId"):
+        return d
+    at = str(item.get("createdAt") or "")
+    def close(p):
+        reqs = p.get("invoiceRequests") or []
+        if not any(not r.get("doneAt") and str(r.get("at", "")) <= at for r in reqs):
+            return p
+        return {**p, "invoiceRequests": [
+            {**r, "doneAt": at, "invoiceNumber": item.get("number", "")} if not r.get("doneAt") and str(r.get("at", "")) <= at else r
+            for r in reqs]}
+    return {**d, "projects": [close(p) if p.get("id") == item["projectId"] else p for p in d.get("projects", [])]}
 
 
 def load():
@@ -690,6 +707,7 @@ class Handler(BaseHTTPRequestHandler):
         job = (q.get("job") or [""])[0]
         name = os.path.basename((q.get("name") or ["file"])[0].replace("\\", "/")).strip()[:200] or "file"
         ftype = (q.get("type") or [""])[0][:100]
+        kind = (q.get("kind") or [""])[0].strip()[:80]  # document type, e.g. "Work order (WO)"
         raw = self.rfile.read(length)
         with lock:
             exists = any(p.get("id") == job for p in (state["data"] or {}).get("projects", []))
@@ -704,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
                 f.write(raw)
                 f.flush()
                 os.fsync(f.fileno())
-            item = {"id": fid, "projectId": job, "name": name, "size": length, "type": ftype,
+            item = {"id": fid, "projectId": job, "name": name, "size": length, "type": ftype, **({"kind": kind} if kind else {}),
                     "createdBy": user, "createdById": users().get(user or "", {}).get("employeeId", ""),
                     "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             rev = self._commit({"op": "upsert", "col": "attachments", "item": item})
@@ -776,6 +794,7 @@ class Handler(BaseHTTPRequestHandler):
                         o = {**o, "item": item}
                     d = apply_op(d, o)
                     d = start_approved_job(d, o)
+                    d = close_invoice_requests(d, o)
                 state["data"], state["rev"] = d, state["rev"] + 1
                 try:
                     save()

@@ -20,7 +20,7 @@ export interface DataAdapter {
 }
 
 export interface FilesApi {
-  upload(projectId: string, file: File): Promise<void>;
+  upload(projectId: string, file: File, kind?: string): Promise<void>;
   url(id: string): string;
   remove(id: string): Promise<void>;
   maxBytes: number;
@@ -161,8 +161,8 @@ export function serverAdapter(base: string): DataAdapter {
     },
     files: {
       maxBytes: 10 * 1024 * 1024 - 64 * 1024,
-      async upload(projectId, file) {
-        const q = new URLSearchParams({ job: projectId, name: file.name, type: file.type || "application/octet-stream" });
+      async upload(projectId, file, kind) {
+        const q = new URLSearchParams({ job: projectId, name: file.name, type: file.type || "application/octet-stream", ...(kind && { kind }) });
         await check(await fetch(`${url}/files?${q}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, body: file }));
       },
       url: (id) => `${url}/files/${encodeURIComponent(id)}`,

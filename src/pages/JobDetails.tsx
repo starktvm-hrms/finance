@@ -7,8 +7,9 @@ import { jobCategory } from "../lib/doctype";
 import { jobTimeline, personName, stamp } from "../lib/timeline";
 import { invoiceTotals, money, today, uid } from "../lib/util";
 import { RichTextView, isEmpty } from "../components/SafeHtml";
-import { Badge, Empty } from "../components/ui";
-import { PROJECT_STATUS } from "./Projects";
+import { Badge, Empty, Field, Modal } from "../components/ui";
+import { PROJECT_STATUS, headLabel } from "./Projects";
+import { docChecklist, jobStage, openInvoiceRequests, requiredDocs } from "../lib/workflow";
 import { BillingLine, PartInvoice, useCreateInvoice } from "../components/Billing";
 import { estimateBilling } from "../lib/billing";
 
@@ -30,9 +31,10 @@ export default function JobDetails({ id }: { id: string }) {
   const [partOf, setPartOf] = useState<Estimate | null>(null);
   const createInvoice = useCreateInvoice();
   const [error, setError] = useState("");
-  const financeDept = data.departments.find((d) => /finance/i.test(d.name));
-  const [forwardTo, setForwardTo] = useState(financeDept?.id ?? "");
   const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadKind, setUploadKind] = useState("");
+  const [askInvoice, setAskInvoice] = useState<{ kind: "full" | "part"; note: string } | null>(null);
+  const [headPick, setHeadPick] = useState("");
 
   if (!job) {
     return (
@@ -64,9 +66,23 @@ export default function JobDetails({ id }: { id: string }) {
       upsert("projects", { ...job, status: job.status === "lead" ? "active" : job.status, budget: job.budget || invoiceTotals(e).net });
     else if (job.status === "lead") window.setTimeout(refresh, 1500); // the server starts the job; pick that up
   };
-  const forward = () => {
-    if (!forwardTo) return;
-    upsert("projects", { ...job, forwards: [...(job.forwards ?? []), { departmentId: forwardTo, by: myName, at: now() }] });
+  // Workflow: approval → documents → Finance → estimate → invoice request → invoice.
+  const heads = [...new Set([...data.employees.filter((e) => e.isHead && e.active).map((e) => headLabel(data, e)), ...s.departmentHeads.filter(Boolean)])];
+  const sendForApproval = () => {
+    if (!headPick) return;
+    const headEmp = data.employees.find((e) => e.isHead && headLabel(data, e) === headPick);
+    upsert("projects", { ...job, approval: { head: headPick, ...(headEmp && { headId: headEmp.id }), status: "pending", decidedDate: "", askedBy: myName, askedAt: now() } });
+  };
+  const checklist = docChecklist(data, job);
+  const docsReady = checklist.every((d) => d.files.length > 0);
+  const forwardToFinance = () => docsReady && upsert("projects", { ...job, financeForward: { by: myName, at: now(), docs: checklist.map((d) => d.name) } });
+  const openReqs = openInvoiceRequests(data, job);
+  const requestInvoice = (kind: "full" | "part", note: string) =>
+    upsert("projects", { ...job, invoiceRequests: [...(job.invoiceRequests ?? []), { id: uid(), kind, note: note.trim(), by: myName, byUser: user ?? undefined, at: now() }] });
+  /** Open the file picker for one document type. */
+  const pickFile = (kind: string) => {
+    setUploadKind(kind);
+    window.setTimeout(() => fileInput.current?.click(), 0);
   };
   const setJobStatus = (status: Project["status"]) => upsert("projects", { ...job, status });
 
@@ -84,7 +100,28 @@ export default function JobDetails({ id }: { id: string }) {
       };
     if (job.approval?.status === "rejected")
       return { title: `${job.approval.decidedBy || job.approval.head} rejected the job`, actions: can("jobs") && <button className="btn" onClick={() => go("projects", { edit: job.id })}>Edit and ask again</button> };
-    if (!est) return { title: "Create New Estimate", actions: createBtn, forward: true };
+    if (!est) {
+      if (!job.approval)
+        return {
+          title: "Send the job to a department head for approval",
+          actions: can("jobs") && <>
+            <select aria-label="Department head" value={headPick} onChange={(e) => setHeadPick(e.target.value)}>
+              <option value="">{heads.length ? "Choose the department head…" : "Tick “Department head” on employees first"}</option>
+              {heads.map((h) => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <button className="btn primary" disabled={!headPick} onClick={sendForApproval}>Send for approval</button>
+          </>,
+        };
+      if (!job.financeForward)
+        return can("jobs")
+          ? {
+              title: docsReady ? "Approved: forward the job to Finance" : "Approved: upload the documents, then forward the job to Finance",
+              checklist: true,
+              actions: <button className="btn good-fill" disabled={!docsReady} onClick={forwardToFinance} title={docsReady ? "" : "Upload every document in the list first"}>Forward to Finance</button>,
+            }
+          : { title: "Approved: waiting for the AE to forward the job to Finance with the documents", checklist: true };
+      return { title: can("estimates") ? `${job.financeForward.by} forwarded the job to Finance: create the estimate` : "With Finance: waiting for the estimate", actions: createBtn };
+    }
     if (est.status === "draft")
       return { title: `Estimate ${est.number} is a draft: send it to the client`, actions: <>
         {can("estimates") && <button className="btn primary" onClick={() => go("estimates", { open: est.id })}>Open estimate</button>}
@@ -97,13 +134,32 @@ export default function JobDetails({ id }: { id: string }) {
       </> };
     if (est.status === "approved") {
       const started = estimateBilling(data, est).started;
+      const raise = can("invoices") && can("estimates") && <>
+        <button className="btn primary" onClick={() => setPartOf(est)}>Part invoice</button>
+        <button className="btn good-fill" onClick={() => createInvoice(est, "full")}>{started ? "Balance invoice" : "Full invoice"}</button>
+      </>;
+      const r = openReqs[openReqs.length - 1];
+      if (r)
+        return {
+          title: `${r.by} requested ${r.kind === "part" ? "a part" : started ? "the balance" : "the"} invoice${r.note ? `: “${r.note}”` : ""}`,
+          actions: raise || <span className="muted small">Waiting for Finance to raise the invoice.</span>,
+          billing: est,
+        };
       return {
-        title: started ? `Estimate ${est.number} is part invoiced: raise another part or the balance` : `Estimate ${est.number} approved: raise the invoice`,
-        actions: can("invoices") && can("estimates") && <>
-          <button className="btn primary" onClick={() => setPartOf(est)}>Part invoice</button>
-          <button className="btn good-fill" onClick={() => createInvoice(est, "full")}>{started ? "Balance invoice" : "Full invoice"}</button>
+        title: started ? `Estimate ${est.number} is part invoiced: request the next invoice when the work is done` : `Estimate ${est.number} approved: when the work is done, request the invoice`,
+        actions: <>
+          {can("jobs") && <button className="btn primary" onClick={() => setAskInvoice({ kind: "full", note: "" })}>Request invoice</button>}
+          {raise}
         </>,
         billing: est,
+      };
+    }
+    if (!invoice && est.status === "invoiced") {
+      // Roles without the Invoices tab can't see the invoice itself.
+      const done = [...(job.invoiceRequests ?? [])].reverse().find((r) => r.doneAt);
+      return {
+        title: `Finance has raised the invoice${done?.invoiceNumber ? ` ${done.invoiceNumber}` : ""}`,
+        actions: can("jobs") && job.status !== "completed" && <button className="btn good-fill" onClick={() => setJobStatus("completed")}>Mark job completed</button>,
       };
     }
     if (invoice && invoice.status === "draft")
@@ -114,7 +170,6 @@ export default function JobDetails({ id }: { id: string }) {
       return { title: "Invoice paid: close the job", actions: can("jobs") && <button className="btn good-fill" onClick={() => setJobStatus("completed")}>Mark job completed</button> };
     return { title: "Job completed" };
   })();
-  const canForward = next.forward && can("jobs") && data.departments.length > 0;
 
   const send = () => {
     if (isEmpty(msg)) return;
@@ -141,13 +196,14 @@ export default function JobDetails({ id }: { id: string }) {
       }
       setBusy(`Uploading ${f.name}…`);
       try {
-        await files.upload(job.id, f);
+        await files.upload(job.id, f, uploadKind || undefined);
       } catch (e) {
         setError(`${f.name}: ${(e as Error).message}`);
       }
     }
     setBusy("");
     if (fileInput.current) fileInput.current.value = "";
+    setUploadKind("");
     refresh();
   };
   const deleteFile = async (fid: string, name: string) => {
@@ -187,6 +243,7 @@ export default function JobDetails({ id }: { id: string }) {
             {dept && <><dt>Department:</dt><dd>{dept}</dd></>}
             <dt>Date:</dt><dd>{stamp(job.startDate).date}</dd>
             <dt>Status:</dt><dd><Badge tone={PROJECT_STATUS[job.status].tone}>{PROJECT_STATUS[job.status].label}</Badge></dd>
+            <dt>Stage:</dt><dd><Badge tone={jobStage(data, job).tone}>{jobStage(data, job).label}</Badge></dd>
             {createdBy && <><dt>Created by:</dt><dd>{createdBy}</dd></>}
           </dl>
         </section>
@@ -200,14 +257,16 @@ export default function JobDetails({ id }: { id: string }) {
                 <strong>{next.title}</strong>
                 {next.actions && <div className="row gap wrap tl-actions">{next.actions}</div>}
                 {"billing" in next && next.billing && <BillingLine est={next.billing} />}
-                {canForward && (
-                  <div className="row gap wrap tl-actions">
-                    <select aria-label="Forward to department" value={forwardTo} onChange={(e) => setForwardTo(e.target.value)}>
-                      <option value="" disabled>Forward to…</option>
-                      {data.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                    <button className="btn" disabled={!forwardTo} onClick={forward}>Forward</button>
-                  </div>
+                {"checklist" in next && next.checklist && (
+                  <ul className="doc-check">
+                    {checklist.map((d) => (
+                      <li key={d.name} className={d.files.length ? "ok" : ""}>
+                        <span className="doc-mark" aria-hidden>{d.files.length ? "✓" : "○"}</span>
+                        <span><strong>{d.name}</strong> <span className="muted small">{d.files.length ? d.files.map((f) => f.name).join(", ") : "required"}</span></span>
+                        {!d.files.length && can("jobs") && files && <button className="btn ghost small-btn" disabled={!!busy} onClick={() => pickFile(d.name)}>Upload</button>}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </li>
@@ -290,7 +349,7 @@ export default function JobDetails({ id }: { id: string }) {
             <ul className="files">
               {attachments.map((a) => (
                 <li key={a.id}>
-                  <a href={files?.url(a.id)} download={a.name}>{a.name}</a>
+                  <a href={files?.url(a.id)} download={a.name}>{a.kind && <span className="doc-kind">{a.kind}</span>}{a.name}</a>
                   <span className="muted small">{fmtSize(a.size)} · {personName(data, a.createdBy, a.createdById) || "—"} · {stamp(a.createdAt).date}</span>
                   {(access.admin || (!!user && a.createdBy === user)) && files && <button className="btn ghost danger" onClick={() => deleteFile(a.id, a.name)}>Delete</button>}
                 </li>
@@ -300,6 +359,10 @@ export default function JobDetails({ id }: { id: string }) {
           {files ? (
             <>
               <input ref={fileInput} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
+              <select aria-label="Document type" className="doc-type" value={uploadKind} onChange={(e) => setUploadKind(e.target.value)}>
+                <option value="">Other file</option>
+                {requiredDocs(s).map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
               <button className="btn primary" disabled={!!busy} onClick={() => fileInput.current?.click()}>{busy || "Upload Files"}</button>
               <span className="muted small"> Up to 10 MB each.</span>
             </>
@@ -308,6 +371,26 @@ export default function JobDetails({ id }: { id: string }) {
           )}
         </section>
       </div>
+      {askInvoice && (
+        <Modal title="Request the invoice from Finance" onClose={() => setAskInvoice(null)}>
+          <form className="form" onSubmit={(e) => { e.preventDefault(); requestInvoice(askInvoice.kind, askInvoice.note); setAskInvoice(null); }}>
+            <Field label="Invoice" span={2}>
+              <select value={askInvoice.kind} onChange={(e) => setAskInvoice({ ...askInvoice, kind: e.target.value as "full" | "part" })}>
+                <option value="full">{est && estimateBilling(data, est).started ? "The balance (work completed)" : "Full invoice (work completed)"}</option>
+                <option value="part">A part invoice (part of the work done)</option>
+              </select>
+            </Field>
+            <Field label={askInvoice.kind === "part" ? "Which part / how much *" : "Note for Finance"} span={2}>
+              <textarea rows={3} required={askInvoice.kind === "part"} value={askInvoice.note} onChange={(e) => setAskInvoice({ ...askInvoice, note: e.target.value })} placeholder={askInvoice.kind === "part" ? "e.g. 50% on delivery of the first film" : "e.g. Campaign ran 16–25 Aug; client confirmed"} />
+            </Field>
+            <p className="muted small span2">Finance is notified and raises the invoice.</p>
+            <div className="form-actions span2">
+              <button type="button" className="btn" onClick={() => setAskInvoice(null)}>Cancel</button>
+              <button className="btn primary">Send request</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {partOf && <PartInvoice est={partOf} onCancel={() => setPartOf(null)} onCreate={(amount, text) => { const e = partOf; setPartOf(null); createInvoice(e, { amount, text }); }} />}
     </div>
   );

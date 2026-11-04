@@ -78,18 +78,20 @@ export default function Dashboard() {
       )}
       {waiting.length > 0 && (
         <div className="card approvals-card">
-          <h3>Waiting for your approval ({waiting.length})</h3>
+          <h3>Waiting for you ({waiting.length})</h3>
           <ul>
             {waiting.map((n) => (
               <li key={n.id}>
                 <button className="btn ghost" style={{ textAlign: "left", whiteSpace: "normal" }} onClick={() => go("job", { id: n.jobId })}>
                   <strong>{n.body}</strong><div className="muted small">{n.title}</div>
                 </button>
-                {can("jobs") && (
+                {n.id.startsWith("ask:") && can("jobs") ? (
                   <span className="row gap">
                     <button className="btn good-fill" onClick={() => decide(n.jobId, "approved")}>Approve</button>
                     <button className="btn danger" onClick={() => decide(n.jobId, "rejected")}>Reject</button>
                   </span>
+                ) : (
+                  <button className="btn primary" onClick={() => go("job", { id: n.jobId })}>Open job</button>
                 )}
               </li>
             ))}

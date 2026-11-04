@@ -3,6 +3,7 @@ import { ESTIMATE_TYPES, type AppData, type Employee, type EstimateType, type Pr
 import { useStore } from "../lib/store";
 import { needsEstimate, projectFinancials } from "../lib/metrics";
 import { makeJobNumber } from "../lib/jobno";
+import { jobStage } from "../lib/workflow";
 import { jobCategory } from "../lib/doctype";
 import { go } from "../lib/route";
 import { listFilter } from "../lib/scope";
@@ -169,6 +170,7 @@ export default function Projects({ params }: { params: URLSearchParams }) {
                     </td>
                     <td onClick={(e) => p.approval?.status === "pending" && e.stopPropagation()}>
                       <Badge tone={PROJECT_STATUS[p.status].tone}>{PROJECT_STATUS[p.status].label}</Badge>
+                      <div className="small stage-line">{jobStage(data, p).label}</div>
                       {p.approval && (
                         <div className="small approval">
                           {p.approval.status === "pending" ? (
