@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import People from "./pages/People";
 import ProfileMenu from "./components/ProfileMenu";
 import NotificationBell from "./components/NotificationBell";
+import ThemeToggle from "./components/ThemeToggle";
 import { BRAND_MARK } from "./lib/brand";
 import { areaOfPage, pageAllowed } from "./lib/access";
 import { useStore } from "./lib/store";
@@ -83,10 +84,14 @@ export default function App() {
       </aside>
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <main className="main">
-        <div className={`topbar ${hasAccount ? "" : "no-profile"}`}>
+        <div className="topbar">
           <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
           <span className="topbar-title">{pageLabel}</span>
-          {hasAccount && <span className="topbar-end">{ready && <NotificationBell />}<ProfileMenu /></span>}
+          <span className="topbar-end">
+            <ThemeToggle />
+            {hasAccount && ready && <NotificationBell />}
+            {hasAccount && <ProfileMenu />}
+          </span>
         </div>
         {error && (
           <div className="alert">

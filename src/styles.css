@@ -17,8 +17,9 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
   color-scheme: light;
 }
+/* Night mode: the computer's setting, unless the toggle chose light or dark (html[data-theme]). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1115;
     --surface: #171a21;
     --text: #e8eaee;
@@ -34,6 +35,22 @@
     --c-profit: #34d399;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --text: #e8eaee;
+  --muted: #9aa1ad;
+  --border: #272b35;
+  --hover: #1f232c;
+  --primary: #5b80ff;
+  --good: #4ade80;
+  --bad: #fb923c;
+  --warn: #fbbf24;
+  --c-income: #5b80ff;
+  --c-expense: #fbbf24;
+  --c-profit: #34d399;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -100,7 +117,8 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 /* Top bar: profile menu (and, on phones, the menu button and page title) */
 .topbar { display: flex; align-items: center; gap: 8px; padding: 10px 32px; min-height: 56px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 20; }
 .topbar .menu-btn, .topbar .topbar-title { display: none; }
-.topbar.no-profile { display: none; }
+.theme-btn { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+.login-theme { position: fixed; top: 14px; right: 14px; z-index: 5; background: var(--surface); border: 1px solid var(--border); }
 .topbar-end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .profile { position: relative; }
 .bell { position: relative; }
@@ -611,7 +629,6 @@ input.num { text-align: right; }
   .scrim { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 30; }
   .topbar { padding: 8px 12px 8px 16px; min-height: 52px; }
   .topbar .menu-btn, .topbar .topbar-title { display: inline-flex; }
-  .topbar.no-profile { display: flex; }
   .profile-name, .caret { display: none; }
   .profile-btn { padding: 2px; }
   .bell-pop { position: fixed; left: 12px; right: 12px; top: 56px; width: auto; max-width: none; }
